@@ -17,3 +17,10 @@
 [transistors](https://www.amazon.com/dp/B07T61SY9Y/?coliid=I3PYCMWC9PFVFN&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
 
 [bread board](https://www.amazon.com/dp/B09YXQJMTG/?coliid=I2YQE37EN4FBCN&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
+
+# Planned
+- connect to phone with bluetooth to read wifi info
+- store wifi ssid and passwords for auto reconnect
+- setup ota/wireless updates?
+- setup server for remote checking serial moniter
+- find a way to display info on phone while connected to bluetooth?
