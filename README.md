@@ -18,6 +18,9 @@
 
 [bread board](https://www.amazon.com/dp/B09YXQJMTG/?coliid=I2YQE37EN4FBCN&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
 
+# How to run
+open sendMqtt.py, and type `RUN`. The default strength is 20/255. Send `RUN20` or `RUN 20` to control the strength.
+
 # Planned
 - connect to phone with bluetooth to read wifi info
 - store wifi ssid and passwords for auto reconnect
