@@ -23,7 +23,7 @@ const char* edu_identity = "wjkalise@ncsu.edu";
 const char* edu_pass = "KrustyKrab3!";
 
 // ncsu guest details
-const char* ncsuguest_ssid = "ncsu-guesta";
+const char* ncsuguest_ssid = "ncsu-guest";
 const char* ncsuguest_pass = "";
 
 // mqtt
@@ -74,6 +74,64 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     run_motor = true;
   }
 }
+
+// authenticate the captive portal for ncsu guest
+void authenticate_ncsuguest_captive_portal() {
+  Serial.println("Authenticating with captive portal...");
+
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  // ncsu-guest portal url
+  String url = "https://aruba-mc-vip.rh.ncsu.edu/upload/custom/ARUBA-nac-guest-captive-portal_cppm_sg/Guest%20Wireless%20Information.html?cmd=login&mac=00:41:0e:25:75:05&ip=172.16.65.34&essid=ncsu%2Dguest&apname=wvg-215F-205h-1&apgroup=NCSU-Wolf-Village&url=http%3A%2F%2Fdetectportal%2Efirefox%2Ecom%2Fcanonical%2Ehtml";
+
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  // post data
+  String postData = "email=Guest@ncsu.edu&cmd=cmd&Login=I+Agree";
+  int httpCode = http.POST(postData);
+
+  if (httpCode > 0) {
+    Serial.print("Captive portal response code: ");
+    Serial.println(httpCode);
+
+    if (httpCode == 200 || httpCode == 302 || httpCode == 301) {
+      Serial.println("✓ Authentication successful!");
+    } else {
+      Serial.println("⚠ Unexpected response");
+    }
+
+    String response = http.getString();
+    Serial.println("Response (first 100 chars):");
+    Serial.println(response.substring(0, min(100, (int)response.length())));
+  } else {
+    Serial.print("✗ Failed: ");
+    Serial.println(http.errorToString(httpCode));
+  }
+
+  http.end();
+
+  delay(2000);
+
+  // Test internet
+  Serial.println("\nTesting internet connectivity...");
+  HTTPClient testHttp;
+  WiFiClient testClient;
+  testHttp.begin(testClient, "http://www.google.com");
+  testHttp.setTimeout(5000);
+  int testCode = testHttp.GET();
+  testHttp.end();
+  
+  if (testCode > 0) {
+    Serial.println("✓ Internet is working!");
+  } else {
+    Serial.println("✗ Still no internet access");
+    Serial.println("You may need to manually accept the portal in a browser");
+  }
+}
+
 
 // connects to wifi
 void connect_wifi() {
@@ -153,7 +211,10 @@ void connect_wifi() {
     else if (ncsuguestFound) {
       Serial.println("connecting to ncsu guest");
       WiFi.begin(ncsuguest_ssid, ncsuguest_pass);
-    } else {
+      
+    }
+    // else
+    else {
       Serial.println("not ncsu guest nor whotspot");
       WiFi.begin(whotspot_ssid, whotspot_pass);
     }
@@ -169,12 +230,11 @@ void connect_wifi() {
     Serial.println("\nWi-Fi Connected!");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
+
+    authenticate_ncsuguest_captive_portal();
   }
 }
 
-void authenticate_captive_portal() {
-  return;
-}
 
 // connect to mqtt
 void connect_mqtt() {
