@@ -1,8 +1,6 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <WiFiClientSecure.h>
-#include <esp_wpa2.h>  // to connect to eduroam
-#include <HTTPClient.h> // for ncsu-guest captive portal
 
 const int motorPin = D10;
 
@@ -11,20 +9,15 @@ int currentTime = 0;
 
 
 // out of 255
-int strength = 20;
+int strength = 150;
 
 // wifi login
 const char* whotspot_ssid = "whotspot";
 const char* whotspot_pass = "deez1234";
 
-// eduroam details
-const char* eduroam_ssid = "eduroama";
-const char* edu_identity = "wjkalise@ncsu.edu";
-const char* edu_pass = "KrustyKrab3!";
-
-// ncsu guest details
-const char* ncsuguest_ssid = "ncsu-guest";
-const char* ncsuguest_pass = "";
+// ncsu details
+const char* ncsu_ssid = "ncsu";
+const char* ncsu_pass = "";
 
 // mqtt
 const char* MQTT_HOST = "lc600a99.ala.us-east-1.emqxsl.com";
@@ -75,165 +68,77 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-// authenticate the captive portal for ncsu guest
-void authenticate_ncsuguest_captive_portal() {
-  Serial.println("Authenticating with captive portal...");
-
-  HTTPClient http;
-  WiFiClientSecure client;
-  client.setInsecure();
-
-  // ncsu-guest portal url
-  String url = "https://aruba-mc-vip.rh.ncsu.edu/upload/custom/ARUBA-nac-guest-captive-portal_cppm_sg/Guest%20Wireless%20Information.html?cmd=login&mac=00:41:0e:25:75:05&ip=172.16.65.34&essid=ncsu%2Dguest&apname=wvg-215F-205h-1&apgroup=NCSU-Wolf-Village&url=http%3A%2F%2Fdetectportal%2Efirefox%2Ecom%2Fcanonical%2Ehtml";
-
-  http.begin(client, url);
-  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-
-  // post data
-  String postData = "email=Guest@ncsu.edu&cmd=cmd&Login=I+Agree";
-  int httpCode = http.POST(postData);
-
-  if (httpCode > 0) {
-    Serial.print("Captive portal response code: ");
-    Serial.println(httpCode);
-
-    if (httpCode == 200 || httpCode == 302 || httpCode == 301) {
-      Serial.println("✓ Authentication successful!");
-    } else {
-      Serial.println("⚠ Unexpected response");
-    }
-
-    String response = http.getString();
-    Serial.println("Response (first 100 chars):");
-    Serial.println(response.substring(0, min(100, (int)response.length())));
-  } else {
-    Serial.print("✗ Failed: ");
-    Serial.println(http.errorToString(httpCode));
-  }
-
-  http.end();
-
-  delay(2000);
-
-  // Test internet
-  Serial.println("\nTesting internet connectivity...");
-  HTTPClient testHttp;
-  WiFiClient testClient;
-  testHttp.begin(testClient, "http://www.google.com");
-  testHttp.setTimeout(5000);
-  int testCode = testHttp.GET();
-  testHttp.end();
-  
-  if (testCode > 0) {
-    Serial.println("✓ Internet is working!");
-  } else {
-    Serial.println("✗ Still no internet access");
-    Serial.println("You may need to manually accept the portal in a browser");
-  }
-}
-
-
 // connects to wifi
 void connect_wifi() {
-  currentTime = millis();
-  Serial.println("starting to connect to wifi: " + (String)(currentTime - startTime));
-
   // sets wifi to station mode, acts as client (instead of access point/host)
   WiFi.mode(WIFI_STA);
-  currentTime = millis();
-  Serial.println("set wifi mode: " + (String)(currentTime - startTime));
+  delay(500);
 
   // print available wifi networks
   Serial.println("scanning available wifi networks...");
-  int n = WiFi.scanNetworks();
+  int networksCount = WiFi.scanNetworks();
   currentTime = millis();
   Serial.println("scanned networks: " + (String)(currentTime - startTime));
   bool eduroamFound = false;
-  bool ncsuguestFound = false;
+  bool ncsuFound = false;
   bool whotspotFound = false;
 
-  if (n == 0) {
+  while (networksCount == 0) {
     Serial.println("No networks found");
-  } else {
-    Serial.println((String)n + " networks found");
-    for (int i = 0; i < n; ++i) {
-      String ssid = WiFi.SSID(i);
-      Serial.print(i + 1);
-      Serial.print(": ");
-      Serial.print(ssid);
-      Serial.println();
+    networksCount = WiFi.scanNetworks();
+  }
 
-      // check for eduroam
-      if (ssid.equals(eduroam_ssid)) {
-        eduroamFound = true;
-      }
-      // check for ncsuguest
-      if (ssid.equals(ncsuguest_ssid)) {
-        ncsuguestFound = true;
-      }
-      // check for whotspot
-      if (ssid.equals(whotspot_ssid)) {
-        whotspotFound = true;
-      }
+  Serial.println((String)(networksCount) + " networks found");
+  for (int i = 0; i < networksCount; ++i) {
+    String ssid = WiFi.SSID(i);
+    Serial.print(i + 1);
+    Serial.print(": ");
+    Serial.print(ssid);
+    Serial.println();
+
+    // check for ncsu
+    if (ssid.equals(ncsu_ssid)) {
+      ncsuFound = true;
+    }
+    // check for whotspot
+    if (ssid.equals(whotspot_ssid)) {
+      whotspotFound = true;
     }
   }
 
-  if (eduroamFound) {
-    // log in with eduroam wpa2
-    Serial.println("✅ eduroam network detected!");
+  Serial.println("\nConnected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
 
-    esp_wifi_sta_wpa2_ent_set_identity((uint8_t*)edu_identity, strlen(edu_identity));
-    esp_wifi_sta_wpa2_ent_set_username((uint8_t*)edu_identity, strlen(edu_identity));
-    esp_wifi_sta_wpa2_ent_set_password((uint8_t*)edu_pass, strlen(edu_pass));
-    esp_wifi_sta_wpa2_ent_enable();
-
-    WiFi.begin(eduroam_ssid);
-
-    Serial.println("Connecting to eduroam...");
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-    }
-
-    Serial.println("\nConnected!");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
+  // try whotspot
+  if (whotspotFound) {
+    Serial.println("connecting to whotspot");
+    WiFi.begin(whotspot_ssid, whotspot_pass);
   }
+  // try ncsu
+  else if (ncsuFound) {
+    Serial.println("connecting to ncsu");
+    WiFi.begin(ncsu_ssid, ncsu_pass);
+  }
+  // else
   else {
-    // log in normally
-
-    // try whotspot
-    if (whotspotFound) {
-      Serial.println("connecting to whotspot");
-      WiFi.begin(whotspot_ssid, whotspot_pass);
-    }
-    // try ncsuguest
-    else if (ncsuguestFound) {
-      Serial.println("connecting to ncsu guest");
-      WiFi.begin(ncsuguest_ssid, ncsuguest_pass);
-      
-    }
-    // else
-    else {
-      Serial.println("not ncsu guest nor whotspot");
-      WiFi.begin(whotspot_ssid, whotspot_pass);
-    }
-    
-    int counter = 0;
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(1000);
-      Serial.println("attempting to connect: seconds " + String(counter));
-      counter++;
-    }
-    currentTime = millis();
-    Serial.println("logged in: " + (String)(currentTime - startTime));
-    Serial.println("\nWi-Fi Connected!");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
-
-    authenticate_ncsuguest_captive_portal();
+    Serial.println("not ncsu guest nor whotspot");
+    WiFi.begin(whotspot_ssid, whotspot_pass);
   }
+
+  int counter = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("attempting to connect: seconds " + String(counter));
+    counter++;
+  }
+  currentTime = millis();
+  Serial.println("logged in: " + (String)(currentTime - startTime));
+  Serial.println("\nWi-Fi Connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
 }
+
 
 
 // connect to mqtt
@@ -293,7 +198,7 @@ void loop() {
   // checks if the motor is already running
   if (run_motor && motorStart == 0) {
     analogWrite(motorPin, strength);
-    Serial.println("Motor Running at Half Strength");
+    Serial.println("Motor Running at " + (String)((float)strength / 255 * 100) + "% strength");
     motorStart = millis();
     run_motor = false;
   }
