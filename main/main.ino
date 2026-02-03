@@ -1,142 +1,249 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <WiFiClientSecure.h>
+#include <LittleFS.h>  // for logging
+#include <ArduinoJson.h>
 
 const int motorPin = D10;
 
 int startTime = 0;
 int currentTime = 0;
 
+// ms per network check
+int networkCheck = 10000;
 
 // out of 255
-int strength = 150;
+int default_strength = 150;
+int strength = 0;
 
-// wifi login
-const char* whotspot_ssid = "whotspot";
-const char* whotspot_pass = "deez1234";
-
-// ncsu details
-const char* ncsu_ssid = "ncsu";
-const char* ncsu_pass = "";
+// default values
+char* default_ssid = "ncsu";
+char* default_password = "";
 
 // mqtt
 const char* MQTT_HOST = "lc600a99.ala.us-east-1.emqxsl.com";
 const int MQTT_PORT = 8883;
-const char* MQTT_USER = "a";  // token
+const char* MQTT_USER = "a";
 const char* MQTT_PASS = "a";
 const char* CMD_TOPIC = "devices/esp32_c3_1/cmd";
 WiFiClientSecure wifi;
 PubSubClient mqtt(wifi);
+
 bool run_motor = false;
+bool variables_set = false;
 
+StaticJsonDocument<1024> doc;
 
-// reads command on topic
-void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+#include <LittleFS.h>
+#include <ArduinoJson.h>
 
-  // print out every message
-  Serial.print("Message arrived on topic: ");
-  Serial.println(topic);
-  Serial.print("Payload: ");
-  for (unsigned int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
-  }
-  Serial.println();
-  Serial.print("Payload bytes: ");
-  for (unsigned int i = 0; i < length; i++) {
-    Serial.print(payload[i]);
-    Serial.print(" ");
-  }
-  Serial.println();
+void delete_config() {
+  Serial.println("got here");
 
-  // set run motor if command is RUN
-  if (length >= 3 && payload[0] == 'R' && payload[1] == 'U' && payload[2] == 'N') {
-
-    // check for number after RUN to set strength to
-    if (length > 3) {
-      char buf[8];
-      int n = min((int)length - 3, 7);
-      memcpy(buf, payload + 3, n);
-      buf[n] = '\0';
-
-      int val = atoi(buf);
-      if (val >= 0 && val <= 255) {
-        strength = val;
-      }
+  if (LittleFS.exists("/networks.json")) {
+    if (LittleFS.remove("/networks.json")) {
+      Serial.println("networks.json deleted successfully");
+    } else {
+      Serial.println("Failed to delete networks.json");
+      return;
     }
+  } else {
+    Serial.println("networks.json does not exist");
+  }
 
+  setup_print_config();
+}
+
+
+void add_network(const char* ssid, const char* password) {
+  JsonArray networks = doc["networks"].as<JsonArray>();
+  if (!networks) {
+    networks = doc.createNestedArray("networks");
+  }
+  JsonObject net = networks.createNestedObject();
+  net["ssid"] = ssid;
+  net["password"] = password;
+
+  File file = LittleFS.open("/networks.json", "w");
+  serializeJson(doc, file);
+  file.close();
+
+  Serial.println("Network added: " + String(ssid));
+  setup_print_config();
+}
+
+void delete_network(const char* ssid) {
+  JsonArray networks = doc["networks"].as<JsonArray>();
+  if (!networks) return;
+  for (int i = 0; i < networks.size(); i++) {
+    JsonObject net = networks[i];
+    if (net["ssid"] == ssid) {
+      networks.remove(i);
+      Serial.println("Network deleted: " + String(ssid));
+      break;
+    }
+  }
+  File file = LittleFS.open("/networks.json", "w");
+  serializeJson(doc, file);
+  file.close();
+  setup_print_config();
+}
+
+void set_strength_in_json(int new_strength) {
+  if (!LittleFS.begin()) {
+    Serial.println("LittleFS mount failed");
+    return;
+  }
+
+  // read existing json
+  File file = LittleFS.open("/networks.json", "r");
+  if (!file) {
+    Serial.println("Failed to open networks.json for reading");
+    return;
+  }
+
+  file.close();
+
+  doc["strength"] = new_strength;
+
+  File fileOut = LittleFS.open("/networks.json", "w");
+  if (!fileOut) {
+    Serial.println("Failed to open networks.json for writing");
+    return;
+  }
+  serializeJsonPretty(doc, fileOut);
+  fileOut.close();
+
+  Serial.print("Updated strength to ");
+  Serial.println(new_strength);
+}
+
+// reads and runs commands
+void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+  String message = "";
+  for (unsigned int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
+  handle_command(message);
+}
+
+void handle_command(String message) {
+  message.trim();
+
+  if (message.startsWith("run")) {
+    int val = message.length() > 4 ? message.substring(4).toInt() : strength;
+    if (val >= 0 && val <= 255) strength = val;
     run_motor = true;
+    Serial.println("Motor will run at strength: " + String(strength));
+  } else if (message.startsWith("strength")) {
+    int val = message.length() > 9 ? message.substring(9).toInt() : strength;
+    if (val >= 0 && val <= 255) {
+      strength = val;
+      set_strength_in_json(val);
+      setup_print_config();
+      Serial.println("Strength updated: " + String(strength));
+    } else {
+      Serial.println("Invalid strength value: " + String(val));
+    }
+  } else if (message.startsWith("add network")) {
+    String params = message.substring(12);
+    int spaceIndex = params.indexOf(' ');
+    String ssid = spaceIndex > 0 ? params.substring(0, spaceIndex) : params;
+    String password = spaceIndex > 0 ? params.substring(spaceIndex + 1) : "";
+    add_network(ssid.c_str(), password.c_str());
+  } else if (message.startsWith("delete network")) {
+    String ssid = message.substring(15);
+    delete_network(ssid.c_str());
+  } else if (message.startsWith("delete")) {
+    delete_config();
+  } else if (message.startsWith("config")) {
+    setup_print_config();
+  } else {
+    Serial.println("Invalid command: " + message);
   }
 }
 
-// connects to wifi
+
 void connect_wifi() {
-  // sets wifi to station mode, acts as client (instead of access point/host)
   WiFi.mode(WIFI_STA);
   delay(500);
 
-  // print available wifi networks
   Serial.println("scanning available wifi networks...");
   int networksCount = WiFi.scanNetworks();
-  currentTime = millis();
-  Serial.println("scanned networks: " + (String)(currentTime - startTime));
-  bool eduroamFound = false;
-  bool ncsuFound = false;
-  bool whotspotFound = false;
 
   while (networksCount == 0) {
     Serial.println("No networks found");
     networksCount = WiFi.scanNetworks();
   }
 
-  Serial.println((String)(networksCount) + " networks found");
+  Serial.println(String(networksCount) + " networks found");
   for (int i = 0; i < networksCount; ++i) {
     String ssid = WiFi.SSID(i);
     Serial.print(i + 1);
     Serial.print(": ");
-    Serial.print(ssid);
-    Serial.println();
+    Serial.println(ssid);
+  }
 
-    // check for ncsu
-    if (ssid.equals(ncsu_ssid)) {
-      ncsuFound = true;
+  JsonArray networks = doc["networks"].as<JsonArray>();
+
+  // backup network if empty
+  if (!networks || networks.size() == 0) {
+    Serial.print("no networks in config, trying default network: ");
+    Serial.println(default_ssid);
+
+    WiFi.begin(default_ssid, default_password);
+
+    unsigned long startAttempt = millis();
+    const unsigned long timeout = networkCheck;
+
+    while (WiFi.status() != WL_CONNECTED && (millis() - startAttempt) < timeout) {
+      delay(500);
+      unsigned long timePassed = millis() - startAttempt;
+      Serial.println("Time passed: " + String(timePassed / 1000.0) + " seconds");
     }
-    // check for whotspot
-    if (ssid.equals(whotspot_ssid)) {
-      whotspotFound = true;
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.print("Connected to ");
+      Serial.println(default_ssid);
+      return;
+    } else {
+      Serial.println("Failed to connect to default network");
     }
   }
-
-  Serial.println("\nConnected!");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
-
-  // try whotspot
-  if (whotspotFound) {
-    Serial.println("connecting to whotspot");
-    WiFi.begin(whotspot_ssid, whotspot_pass);
-  }
-  // try ncsu
-  else if (ncsuFound) {
-    Serial.println("connecting to ncsu");
-    WiFi.begin(ncsu_ssid, ncsu_pass);
-  }
-  // else
+  // try every network in config
   else {
-    Serial.println("not ncsu guest nor whotspot");
-    WiFi.begin(whotspot_ssid, whotspot_pass);
+    for (JsonObject network : networks) {
+      const char* ssid = network["ssid"];
+      const char* password = network["password"];
+
+      Serial.print("trying to connect to ");
+      Serial.println(ssid);
+
+      WiFi.begin(ssid, password);
+
+      unsigned long startAttempt = millis();
+      const unsigned long timeout = networkCheck;
+
+      while (WiFi.status() != WL_CONNECTED && (millis() - startAttempt) < timeout) {
+        delay(500);
+        unsigned long timePassed = millis() - startAttempt;
+        Serial.println("Time passed: " + String(timePassed / 1000.0) + " seconds");
+      }
+
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.print("Connected to ");
+        Serial.println(ssid);
+        return;
+      } else {
+        Serial.print("Failed to connect to ");
+        Serial.println(ssid);
+      }
+    }
   }
 
-  int counter = 0;
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("attempting to connect: seconds " + String(counter));
-    counter++;
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Could not connect to any network");
   }
-  currentTime = millis();
-  Serial.println("logged in: " + (String)(currentTime - startTime));
-  Serial.println("\nWi-Fi Connected!");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
 }
 
 
@@ -155,13 +262,72 @@ void connect_mqtt() {
       Serial.println("mqtt connected");
       mqtt.subscribe(CMD_TOPIC, 1);
     } else {
-      Serial.print("Failed, rc=");
-      Serial.print(mqtt.state());
-      Serial.println(" try again in 2 seconds");
-      delay(2000);
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.print("Failed, rc=");
+        Serial.print(mqtt.state());
+        Serial.println(" try again in 2 seconds");
+        delay(2000);
+      } else {
+        Serial.println("not connected to wifi, retrying");
+        connect_wifi();
+      }
     }
   }
 }
+
+// config
+void setup_print_config() {
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS mount failed");
+    return;
+  }
+
+  doc.clear();
+
+  // create file if it doesn't exist
+  if (!LittleFS.exists("/networks.json")) {
+    Serial.println("creating networks.json");
+    File file = LittleFS.open("/networks.json", "w");
+
+    doc["strength"] = 150;
+    JsonArray networks = doc.createNestedArray("networks");
+    JsonObject defaultNetwork = networks.createNestedObject();
+    defaultNetwork["ssid"] = default_ssid;
+    defaultNetwork["password"] = default_password;
+
+    serializeJsonPretty(doc, file);
+    file.close();
+
+    Serial.println("networks.json created");
+  }
+
+  // open file for reading
+  File file = LittleFS.open("/networks.json", "r");
+  if (!file) {
+    Serial.println("failed to open networks.json");
+    return;
+  }
+
+  DeserializationError err = deserializeJson(doc, file);
+  file.close();
+
+  if (err) {
+    Serial.print("Failed to parse networks.json: ");
+    Serial.println(err.c_str());
+    return;
+  }
+
+  if (!variables_set) {
+    strength = doc["strength"] | 150;
+    variables_set = true;
+  }
+
+  // print config
+  Serial.println("networks.json:");
+  serializeJsonPretty(doc, Serial);
+  Serial.println();
+}
+
 
 
 // setup
@@ -171,8 +337,7 @@ void setup() {
   analogWrite(motorPin, 0);
   int startTime = millis();
 
-
-
+  setup_print_config();
   connect_wifi();
   connect_mqtt();
 }
@@ -198,7 +363,7 @@ void loop() {
   // checks if the motor is already running
   if (run_motor && motorStart == 0) {
     analogWrite(motorPin, strength);
-    Serial.println("Motor Running at " + (String)((float)strength / 255 * 100) + "% strength");
+    Serial.println("Motor Running at " + (String)((float)strength / 255 * 100) + "% strength, " + (String)strength);
     motorStart = millis();
     run_motor = false;
   }
@@ -209,5 +374,11 @@ void loop() {
     analogWrite(motorPin, 0);
     Serial.println("Motor Off");
     motorStart = 0;
+  }
+
+  // read terminal commands
+  if (Serial.available()) {
+    String message = Serial.readStringUntil('\n');
+    handle_command(message);
   }
 }
