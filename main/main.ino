@@ -4,9 +4,16 @@
 #include <LittleFS.h>  // for logging
 #include <ArduinoJson.h>
 
+#define SLEEP_TIME 5
+
 // change for each esp32
 const char* esp32_topic = "esp32_c3_1";
 
+
+// RTC persistent vars
+RTC_DATA_ATTR int strength = 0;
+RTC_DATA_ATTR char default_ssid[32] = "ncsu";
+RTC_DATA_ATTR char default_password[64] = "";
 
 // global vars
 int startTime = 0;
@@ -14,14 +21,9 @@ int currentTime = 0;
 bool run_motor = false;
 bool variables_set = false;
 StaticJsonDocument<1024> doc;
-int networkCheck = 10000;    // timeout in ms
-int default_strength = 150;  // max 255
-int strength = 0;
+int networkCheckTimeout = 5000;  // timeout in ms
+int default_strength = 150;      // max 255
 const int motorPin = D10;
-
-// default values
-char* default_ssid = "ncsu";
-char* default_password = "";
 
 // mqtt
 const char* MQTT_HOST = "lc600a99.ala.us-east-1.emqxsl.com";
@@ -31,10 +33,6 @@ const char* MQTT_PASS = "a";
 WiFiClientSecure wifi;
 PubSubClient mqtt(wifi);
 const char* info_topic = "info";
-
-
-
-
 
 
 // send message
@@ -137,6 +135,25 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   handle_command(message);
 }
 
+// scans networks, for debugging
+void scan_print_networks() {
+  Serial.println("scanning available wifi networks...");
+  int networksCount = WiFi.scanNetworks();
+
+  while (networksCount == 0) {
+    Serial.println("No networks found");
+    networksCount = WiFi.scanNetworks();
+  }
+
+  Serial.println(String(networksCount) + " networks found");
+  for (int i = 0; i < networksCount; ++i) {
+    String ssid = WiFi.SSID(i);
+    Serial.print(i + 1);
+    Serial.print(": ");
+    Serial.println(ssid);
+  }
+}
+
 void handle_command(String message) {
   message.trim();
 
@@ -144,7 +161,6 @@ void handle_command(String message) {
     int val = message.length() > 4 ? message.substring(4).toInt() : strength;
     if (val >= 0 && val <= 255) strength = val;
     run_motor = true;
-    Serial.println("Motor will run at strength: " + String(strength));
   } else if (message.startsWith("strength")) {
     int val = message.length() > 9 ? message.substring(9).toInt() : strength;
     if (val >= 0 && val <= 255) {
@@ -176,87 +192,63 @@ void handle_command(String message) {
 
 String connect_wifi() {
   WiFi.mode(WIFI_STA);
-  delay(500);
 
-  Serial.println("scanning available wifi networks...");
-  int networksCount = WiFi.scanNetworks();
-
-  while (networksCount == 0) {
-    Serial.println("No networks found");
-    networksCount = WiFi.scanNetworks();
-  }
-
-  Serial.println(String(networksCount) + " networks found");
-  for (int i = 0; i < networksCount; ++i) {
-    String ssid = WiFi.SSID(i);
-    Serial.print(i + 1);
-    Serial.print(": ");
-    Serial.println(ssid);
-  }
+  // scan and print networks, for debugging
+  // unsigned long scanStart = millis();
+  // scan_print_networks();
+  // Serial.println("networks scan: " + String((millis() - scanStart) / 1000.0) + " seconds");
 
   JsonArray networks = doc["networks"].as<JsonArray>();
 
-  // backup network if empty
-  if (!networks || networks.size() == 0) {
-    Serial.print("no networks in config, trying default network: ");
-    Serial.println(default_ssid);
+  // try to connect to last connected network first
+  if (strlen(default_ssid) > 0) {
+    Serial.println("connecting to last network: " + String(default_ssid));
 
     WiFi.begin(default_ssid, default_password);
-
     unsigned long startAttempt = millis();
-    const unsigned long timeout = networkCheck;
 
-    while (WiFi.status() != WL_CONNECTED && (millis() - startAttempt) < timeout) {
-      delay(500);
-      unsigned long timePassed = millis() - startAttempt;
-      Serial.println("Time passed: " + String(timePassed / 1000.0) + " seconds");
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < networkCheckTimeout) {
+      yield();
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-      Serial.print("Connected to ");
-      Serial.println(default_ssid);
+      Serial.println("WiFi connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
       return default_ssid;
-    } else {
-      Serial.println("Failed to connect to default network");
     }
+
+    Serial.println("Failed to connect to last network");
+    return "";
   }
   // try every network in config
-  else {
-    for (JsonObject network : networks) {
-      const char* ssid = network["ssid"];
-      const char* password = network["password"];
+  for (JsonObject network : networks) {
+    const char* ssid = network["ssid"];
+    const char* password = network["password"];
+    Serial.println("trying network in config: " + String(ssid));
 
-      Serial.print("trying to connect to ");
-      Serial.println(ssid);
+    WiFi.begin(ssid, password);
 
-      WiFi.begin(ssid, password);
+    unsigned long startAttempt = millis();
+    const unsigned long timeout = networkCheckTimeout;
 
-      unsigned long startAttempt = millis();
-      const unsigned long timeout = networkCheck;
-
-      while (WiFi.status() != WL_CONNECTED && (millis() - startAttempt) < timeout) {
-        delay(500);
-        unsigned long timePassed = millis() - startAttempt;
-        Serial.println("Time passed: " + String(timePassed / 1000.0) + " seconds");
-      }
-
-      if (WiFi.status() == WL_CONNECTED) {
-        Serial.print("Connected to ");
-        Serial.println(ssid);
-        return ssid;
-      } else {
-        Serial.print("Failed to connect to ");
-        Serial.println(ssid);
-      }
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < networkCheckTimeout) {
+      yield();
     }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("WiFi connected to: " + String(ssid) + " in " + String((millis() - startAttempt) / 1000.0) + " seconds");
+      strncpy(default_ssid, ssid, sizeof(default_ssid) - 1);
+      default_ssid[sizeof(default_ssid) - 1] = '\0';
+      strncpy(default_password, password, sizeof(default_password) - 1);
+      default_password[sizeof(default_password) - 1] = '\0';
+      return ssid;
+    }
+
+    Serial.println("failed: " + String(ssid));
   }
 
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Could not connect to any network");
-  }
+  Serial.println("could not connect to any network");
   return "";
 }
-
 
 // connect to mqtt
 void connect_mqtt() {
@@ -266,24 +258,36 @@ void connect_mqtt() {
   // make mqtt use the callback function above when looping
   mqtt.setCallback(mqtt_callback);
 
-  while (!mqtt.connected()) {
-    Serial.println("connecting to mqtt");
+  Serial.println("connecting to mqtt");
+
+
+  int retries = 0;
+
+  while (!mqtt.connected() && retries < 5) {
+    unsigned long startAttempt = millis();
     if (mqtt.connect("esp32_c3_1", MQTT_USER, MQTT_PASS)) {
-      Serial.println("mqtt connected");
+      Serial.println("MQTT connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
       mqtt.subscribe(esp32_topic, 1);
-    } else {
-      if (WiFi.status() == WL_CONNECTED) {
-        Serial.print("Failed, rc=");
-        Serial.print(mqtt.state());
-        Serial.println(" try again in 2 seconds");
-        delay(2000);
-      } else {
-        Serial.println("not connected to wifi, retrying");
-        connect_wifi();
-      }
+      break;
     }
+
+    Serial.print("MQTT failed (rc=");
+    Serial.print(mqtt.state());
+    Serial.println("), retrying in 5 seconds");
+
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi lost, reconnecting...");
+      connect_wifi();
+    }
+
+    delay(5000);
+    retries++;
+  }
+  if (!mqtt.connected()) {
+    Serial.println("MQTT connect failed after retries");
   }
 }
+
 
 // config
 void setup_print_config() {
@@ -341,15 +345,14 @@ void setup_print_config() {
 // setup
 void setup() {
   Serial.begin(115200);
+  Serial.println("-------------------------");
   pinMode(motorPin, OUTPUT);
   analogWrite(motorPin, 0);
-  int startTime = millis();
+  startTime = millis();
 
   setup_print_config();
   String ssid = connect_wifi();
   connect_mqtt();
-
-  send_message(("Connected to " + (String)ssid), esp32_topic);
 }
 
 unsigned long motorStart = 0;
