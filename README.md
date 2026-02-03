@@ -1,5 +1,5 @@
 # Commands
-open sendMqtt.py to run commands
+open sendMqtt.py to send commands through mqtt, or send commands in serial monitor in arudino ide
 
 `run` - makes the motor run for a short time
 
