@@ -4,12 +4,15 @@ import time
 import random
 import ssl
 
+# might change
+TOPIC = "esp32_c3_1"
+
 # EMQX Connection Details
 BROKER = "lc600a99.ala.us-east-1.emqxsl.com"
 PORT = 8883  # TLS/SSL port
-USERNAME = "a"  # Your EMQX username (change this in Access Control!)
-PASSWORD = "a"  # Your EMQX password (change this in Access Control!)
-TOPIC = "devices/esp32_c3_1/cmd"
+USERNAME = "a"  # EMQX username
+PASSWORD = "a"  # EMQX password
+
 
 def on_connect(client, userdata, flags, rc):
     print(f"Connected with result code {rc}")

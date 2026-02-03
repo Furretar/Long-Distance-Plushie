@@ -4,17 +4,20 @@
 #include <LittleFS.h>  // for logging
 #include <ArduinoJson.h>
 
-const int motorPin = D10;
+// change for each esp32
+const char* esp32_topic = "esp32_c3_1";
 
+
+// global vars
 int startTime = 0;
 int currentTime = 0;
-
-// ms per network check
-int networkCheck = 10000;
-
-// out of 255
-int default_strength = 150;
+bool run_motor = false;
+bool variables_set = false;
+StaticJsonDocument<1024> doc;
+int networkCheck = 10000;    // timeout in ms
+int default_strength = 150;  // max 255
 int strength = 0;
+const int motorPin = D10;
 
 // default values
 char* default_ssid = "ncsu";
@@ -25,18 +28,25 @@ const char* MQTT_HOST = "lc600a99.ala.us-east-1.emqxsl.com";
 const int MQTT_PORT = 8883;
 const char* MQTT_USER = "a";
 const char* MQTT_PASS = "a";
-const char* CMD_TOPIC = "devices/esp32_c3_1/cmd";
 WiFiClientSecure wifi;
 PubSubClient mqtt(wifi);
+const char* info_topic = "info";
 
-bool run_motor = false;
-bool variables_set = false;
 
-StaticJsonDocument<1024> doc;
 
-#include <LittleFS.h>
-#include <ArduinoJson.h>
 
+
+
+// send message
+void send_message(String message, String topic) {
+  message = String(esp32_topic) + ": " + message;
+  if (mqtt.publish(info_topic, message.c_str())) {
+  } else {
+    Serial.println("Message failed to send.");
+  }
+}
+
+// delete config
 void delete_config() {
   Serial.println("got here");
 
@@ -159,12 +169,12 @@ void handle_command(String message) {
   } else if (message.startsWith("config")) {
     setup_print_config();
   } else {
-    Serial.println("Invalid command: " + message);
+    Serial.println((String)(esp32_topic) + ": " + message);
   }
 }
 
 
-void connect_wifi() {
+String connect_wifi() {
   WiFi.mode(WIFI_STA);
   delay(500);
 
@@ -205,7 +215,7 @@ void connect_wifi() {
     if (WiFi.status() == WL_CONNECTED) {
       Serial.print("Connected to ");
       Serial.println(default_ssid);
-      return;
+      return default_ssid;
     } else {
       Serial.println("Failed to connect to default network");
     }
@@ -233,7 +243,7 @@ void connect_wifi() {
       if (WiFi.status() == WL_CONNECTED) {
         Serial.print("Connected to ");
         Serial.println(ssid);
-        return;
+        return ssid;
       } else {
         Serial.print("Failed to connect to ");
         Serial.println(ssid);
@@ -244,12 +254,13 @@ void connect_wifi() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("Could not connect to any network");
   }
+  return "";
 }
-
 
 
 // connect to mqtt
 void connect_mqtt() {
+  wifi.setInsecure();
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
 
   // make mqtt use the callback function above when looping
@@ -257,10 +268,9 @@ void connect_mqtt() {
 
   while (!mqtt.connected()) {
     Serial.println("connecting to mqtt");
-    wifi.setInsecure();
     if (mqtt.connect("esp32_c3_1", MQTT_USER, MQTT_PASS)) {
       Serial.println("mqtt connected");
-      mqtt.subscribe(CMD_TOPIC, 1);
+      mqtt.subscribe(esp32_topic, 1);
     } else {
       if (WiFi.status() == WL_CONNECTED) {
         Serial.print("Failed, rc=");
@@ -328,8 +338,6 @@ void setup_print_config() {
   Serial.println();
 }
 
-
-
 // setup
 void setup() {
   Serial.begin(115200);
@@ -338,8 +346,10 @@ void setup() {
   int startTime = millis();
 
   setup_print_config();
-  connect_wifi();
+  String ssid = connect_wifi();
   connect_mqtt();
+
+  send_message(("Connected to " + (String)ssid), esp32_topic);
 }
 
 unsigned long motorStart = 0;
