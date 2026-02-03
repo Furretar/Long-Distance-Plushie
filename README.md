@@ -1,9 +1,14 @@
 # Commands
 open sendMqtt.py to run commands
+
 `run` - makes the motor run for a short time
+
 `run 100` - runs the motor with strength 100
+
 `strength 100` - changes default strength in the config
+
 `delete` - deletes the config and recreates it with default values
+
 `delete ssid` - deletes the entry with the listed ssid
 
 # Planned
