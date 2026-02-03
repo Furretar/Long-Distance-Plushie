@@ -1,5 +1,24 @@
-# Wireless-Vibrating-Plushie
+# Commands
+open sendMqtt.py to run commands
 
+`run` - makes the motor run for a short time
+
+`run 100` - runs the motor with strength 100
+
+`strength 100` - changes default strength in the config
+
+`delete` - deletes the config and recreates it with default values
+
+`delete ssid` - deletes the entry with the listed ssid
+
+# Planned
+- connect to phone with bluetooth to read wifi info
+- store wifi ssid and passwords for auto reconnect
+- setup ota/wireless updates?
+- setup server for remote checking serial moniter
+- find a way to display info on phone while connected to bluetooth?
+
+# Item list
 [Breadboard Jumper Wire kit](https://a.co/d/aZJ2nzj)
 
 [vibration motors](https://www.amazon.com/dp/B07KYLZC1S/?coliid=I126MR9PDJDCQ6&colid=PV7PKK8FXEMM&psc=0&ref_=list_c_wl_lv_ov_lig_dp_it)
@@ -17,13 +36,3 @@
 [transistors](https://www.amazon.com/dp/B07T61SY9Y/?coliid=I3PYCMWC9PFVFN&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
 
 [bread board](https://www.amazon.com/dp/B09YXQJMTG/?coliid=I2YQE37EN4FBCN&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
-
-# How to run
-open sendMqtt.py, and type `RUN`. The default strength is 20/255. Send `RUN20` or `RUN 20` to control the strength.
-
-# Planned
-- connect to phone with bluetooth to read wifi info
-- store wifi ssid and passwords for auto reconnect
-- setup ota/wireless updates?
-- setup server for remote checking serial moniter
-- find a way to display info on phone while connected to bluetooth?
