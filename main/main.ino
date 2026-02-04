@@ -23,6 +23,7 @@ const int MQTT_PORT = 8883;
 const char* MQTT_USER = "a";
 const char* MQTT_PASS = "a";
 const char* info_topic = "info";
+const int maxPWM = 150; // out of 255, motor rated for 3 volts but powered by 3.7
 
 // global vars
 unsigned long motorStart = 0;
@@ -162,12 +163,14 @@ void handle_command(String message) {
 
   if (message.startsWith("run")) {
     int val = message.length() > 4 ? message.substring(4).toInt() : strength;
-    if (val >= 0 && val <= 255) strength = val;
+    if (val >= 0 && val <= 100) strength = val;
+
+    int motorStrength = (val * maxPWM) / 100;
 
     run_motor = true;
     motorStart = millis();
-    analogWrite(MOTOR_PIN, strength);
-    Serial.println("Motor ON (strength: " + String(strength) + ")");
+    analogWrite(MOTOR_PIN, motorStrength);
+    Serial.println("Motor ON (strength: " + String(val) + "%)");
   }
 
   else if (message.startsWith("stop")) {
@@ -183,7 +186,7 @@ void handle_command(String message) {
 
   else if (message.startsWith("strength")) {
     int val = message.length() > 9 ? message.substring(9).toInt() : strength;
-    if (val >= 0 && val <= 255) {
+    if (val >= 0 && val <= maxPWM) {
       strength = val;
       set_strength_in_json(val);
       setup_print_config();
@@ -335,7 +338,7 @@ void setup_print_config() {
     Serial.println("creating networks.json");
     File file = LittleFS.open("/networks.json", "w");
 
-    doc["strength"] = 150;
+    doc["strength"] = 50;
     JsonArray networks = doc.createNestedArray("networks");
     JsonObject defaultNetwork = networks.createNestedObject();
     defaultNetwork["ssid"] = default_ssid;
