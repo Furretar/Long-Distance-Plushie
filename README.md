@@ -8,9 +8,14 @@ the esp32 communicates over wifi using mqtt. it has a hardcoded default wifi net
 - after entering the command `off`, the device will go into deep sleep until woken up with the button.
 it's estimated the battery life would last 20 days with 1 hour of active time and 23 hours of normal checks a day. if there are no networks in the config and it can't connect to the default netowrk, it will need to be connected to a computer with arudino ide to send a command to add a network.
 
+the led displays the device's status while it's trying to connect to the mqtt server and can't send any messages. it will blink red while connecting to wifi, and blink blue while connecting to mqtt. after 5 retries of 5 seconds each, the device will go into deep sleep and the led will turn off. pushing the button will make it attempt to connect again.
+
+while connected, the button will trigger the other devices motor with the default strength. the motor is in a plastic case and will click when activated. the led will light up white when triggered. if the button is held for longer than 10 seconds the motor will automatically turn off and wait until the button is re-pressed.
+
+
 commands can be sent to the device through the `Iot MQTT Panel` app. you can also see the status of each device, and they will display messages about their mode, when they vibrate, and estimated battery life left. 
 
-when you connect to the mqtt broker with the app, use the following information:
+# connecting to MQTT:
 - the dashboard settings require a name (anything)
 - an ID (anything)
 - a broker address: `lc600a99.ala.us-east-1.emqxsl.com`
@@ -21,16 +26,14 @@ when you connect to the mqtt broker with the app, use the following information:
   
 after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, and `info`. add a text input and output for esp32_1 and esp32_2, and a text output for info. 
 
-the led displays the device's status while it's trying to connect to the mqtt server and can't send any messages. it will blink red while connecting to wifi, and blink blue while connecting to mqtt. after 5 retries of 5 seconds each, the device will go into deep sleep and the led will turn off. pushing the button will make it attempt to connect again.
-
-while connected, the button will trigger the other devices motor with the default strength. the motor is in a plastic case and will click when activated. the led will light up white when triggered.
-
 # Commands
 open sendMqtt.py to send commands through mqtt, or send commands in serial monitor in arudino ide
 
-`run` - makes the motor run for a short time
+`run` - toggles the motor on
 
-`run 100` - runs the motor with strength 100
+`run 100` - toggles the motor with strength 100
+
+`stop` - toggles the motor off
 
 `strength 100` - changes default strength in the config
 
