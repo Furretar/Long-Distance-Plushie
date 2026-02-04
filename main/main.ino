@@ -6,7 +6,7 @@
 
 #define SLEEP_TIME 5
 #define MOTOR_PIN D10
-#define BUTTON_PIN D8
+#define BUTTON_PIN D2 // GPIO 4, RTC capable/can wake up from deep sleep
 
 // change for each esp32
 const char* thisTopic = "esp32_1";
@@ -17,7 +17,7 @@ const char* targetTopic = "esp32_2";
 RTC_DATA_ATTR int strength = 0;
 RTC_DATA_ATTR char default_ssid[32] = "ncsu";
 RTC_DATA_ATTR char default_password[64] = "";
-const unsigned long motorTimeout = 500;  // ms
+const unsigned long motorTimeout = 3000;  // ms
 const char* MQTT_HOST = "lc600a99.ala.us-east-1.emqxsl.com";
 const int MQTT_PORT = 8883;
 const char* MQTT_USER = "a";
