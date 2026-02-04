@@ -19,7 +19,7 @@ RTC_DATA_ATTR char default_password[64] = "";
 
 // global vars
 unsigned long motorStart = 0;
-const unsigned long motorDuration = 500;  // ms
+const unsigned long minMotorDuration = 3000;  // ms
 int startTime = 0;
 int currentTime = 0;
 bool run_motor = false;
@@ -175,6 +175,7 @@ void handle_command(String message) {
     run_motor = false;
     motorStart = 0;
     analogWrite(MOTOR_PIN, 0);
+    Serial.println("stopping");
   }
 
   else if (message.startsWith("off")) {
@@ -392,20 +393,24 @@ void setup() {
 }
 
 // button vars
-unsigned long lastRun = 0;
-const unsigned long interval = 250;
+int lastButtonState = LOW;
 
 // loop
 void loop() {
   int buttonState = digitalRead(BUTTON_PIN);
-  unsigned long now = millis();
+  
 
-  if (buttonState) {
-    if (now - lastRun >= interval) {
-      lastRun = now;
-      mqtt.publish(esp32_topic, "run");
-    }
+  if (buttonState == HIGH && lastButtonState == LOW && run_motor == false) {
+    mqtt.publish(esp32_topic, "run");
   }
+
+  // button released, stop motor
+  if (buttonState == LOW && lastButtonState == HIGH && run_motor == true) {
+    mqtt.publish(esp32_topic, "stop");
+  }
+
+
+  lastButtonState = buttonState;
 
   if (!mqtt.connected()) {
     unsigned long now = millis();
@@ -419,15 +424,13 @@ void loop() {
 
   mqtt.loop();
 
-  // avoids using delay, can react to messages instantly
-  // checks if the motor is already running
-  if (run_motor && motorStart > 0) {
-    if (millis() - motorStart >= motorDuration) {
-      run_motor = false;
-      motorStart = 0;
-      analogWrite(MOTOR_PIN, 0);
-      Serial.println("Motor timed out");
-    }
+  // timeout motor
+  unsigned long now = millis();
+  if (motorStart > 0 && (now - motorStart) > minMotorDuration) {
+    run_motor = false;
+    motorStart = 0;
+    analogWrite(MOTOR_PIN, 0);
+    Serial.println("Motor timed out");
   }
 
   // read terminal commands
