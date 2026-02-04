@@ -5,9 +5,11 @@
 #include <ArduinoJson.h>
 
 #define SLEEP_TIME 5
+#define MOTOR_PIN D10
+#define BUTTON_PIN D8
 
 // change for each esp32
-const char* esp32_topic = "esp32_c3_1";
+const char* esp32_topic = "esp32_1";
 
 
 // RTC persistent vars
@@ -16,6 +18,8 @@ RTC_DATA_ATTR char default_ssid[32] = "ncsu";
 RTC_DATA_ATTR char default_password[64] = "";
 
 // global vars
+unsigned long motorStart = 0;
+const unsigned long motorDuration = 500;  // ms
 int startTime = 0;
 int currentTime = 0;
 bool run_motor = false;
@@ -23,7 +27,7 @@ bool variables_set = false;
 StaticJsonDocument<1024> doc;
 int networkCheckTimeout = 5000;  // timeout in ms
 int default_strength = 150;      // max 255
-const int motorPin = D10;
+bool offSwitch = false;
 
 // mqtt
 const char* MQTT_HOST = "lc600a99.ala.us-east-1.emqxsl.com";
@@ -36,7 +40,7 @@ const char* info_topic = "info";
 
 
 // send message
-void send_message(String message, String topic) {
+void send_info(String message, String topic) {
   message = String(esp32_topic) + ": " + message;
   if (mqtt.publish(info_topic, message.c_str())) {
   } else {
@@ -160,31 +164,59 @@ void handle_command(String message) {
   if (message.startsWith("run")) {
     int val = message.length() > 4 ? message.substring(4).toInt() : strength;
     if (val >= 0 && val <= 255) strength = val;
+
     run_motor = true;
-  } else if (message.startsWith("strength")) {
+    motorStart = millis();
+    analogWrite(MOTOR_PIN, strength);
+    Serial.println("Motor ON (strength: " + String(strength) + ")");
+  }
+
+  else if (message.startsWith("stop")) {
+    run_motor = false;
+    motorStart = 0;
+    analogWrite(MOTOR_PIN, 0);
+  }
+
+  else if (message.startsWith("off")) {
+    offSwitch = true;
+  }
+
+  else if (message.startsWith("strength")) {
     int val = message.length() > 9 ? message.substring(9).toInt() : strength;
     if (val >= 0 && val <= 255) {
       strength = val;
       set_strength_in_json(val);
       setup_print_config();
       Serial.println("Strength updated: " + String(strength));
-    } else {
+    }
+
+    else {
       Serial.println("Invalid strength value: " + String(val));
     }
-  } else if (message.startsWith("add network")) {
+  }
+
+  else if (message.startsWith("add network")) {
     String params = message.substring(12);
     int spaceIndex = params.indexOf(' ');
     String ssid = spaceIndex > 0 ? params.substring(0, spaceIndex) : params;
     String password = spaceIndex > 0 ? params.substring(spaceIndex + 1) : "";
     add_network(ssid.c_str(), password.c_str());
-  } else if (message.startsWith("delete network")) {
+  }
+
+  else if (message.startsWith("delete network")) {
     String ssid = message.substring(15);
     delete_network(ssid.c_str());
-  } else if (message.startsWith("delete")) {
+  }
+
+  else if (message.startsWith("delete")) {
     delete_config();
-  } else if (message.startsWith("config")) {
+  }
+
+  else if (message.startsWith("config")) {
     setup_print_config();
-  } else {
+  }
+
+  else {
     Serial.println((String)(esp32_topic) + ": " + message);
   }
 }
@@ -265,7 +297,7 @@ void connect_mqtt() {
 
   while (!mqtt.connected() && retries < 5) {
     unsigned long startAttempt = millis();
-    if (mqtt.connect("esp32_c3_1", MQTT_USER, MQTT_PASS)) {
+    if (mqtt.connect("esp32_1", MQTT_USER, MQTT_PASS)) {
       Serial.println("MQTT connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
       mqtt.subscribe(esp32_topic, 1);
       break;
@@ -346,8 +378,12 @@ void setup_print_config() {
 void setup() {
   Serial.begin(115200);
   Serial.println("-------------------------");
-  pinMode(motorPin, OUTPUT);
-  analogWrite(motorPin, 0);
+
+  pinMode(BUTTON_PIN, INPUT);
+  digitalWrite(MOTOR_PIN, LOW);
+
+  pinMode(MOTOR_PIN, OUTPUT);
+  analogWrite(MOTOR_PIN, 0);
   startTime = millis();
 
   setup_print_config();
@@ -355,11 +391,22 @@ void setup() {
   connect_mqtt();
 }
 
-unsigned long motorStart = 0;
-const unsigned long motorDuration = 500;  // ms
+// button vars
+unsigned long lastRun = 0;
+const unsigned long interval = 250;
 
 // loop
 void loop() {
+  int buttonState = digitalRead(BUTTON_PIN);
+  unsigned long now = millis();
+
+  if (buttonState) {
+    if (now - lastRun >= interval) {
+      lastRun = now;
+      mqtt.publish(esp32_topic, "run");
+    }
+  }
+
   if (!mqtt.connected()) {
     unsigned long now = millis();
     static unsigned long lastReconnect = 0;
@@ -374,19 +421,13 @@ void loop() {
 
   // avoids using delay, can react to messages instantly
   // checks if the motor is already running
-  if (run_motor && motorStart == 0) {
-    analogWrite(motorPin, strength);
-    Serial.println("Motor Running at " + (String)((float)strength / 255 * 100) + "% strength, " + (String)strength);
-    motorStart = millis();
-    run_motor = false;
-  }
-
-  // motorStart > 0 | means currently running
-  // millis() - motorStart >= motorDuration | turns off after motor duration
-  if (motorStart > 0 && millis() - motorStart >= motorDuration) {
-    analogWrite(motorPin, 0);
-    Serial.println("Motor Off");
-    motorStart = 0;
+  if (run_motor && motorStart > 0) {
+    if (millis() - motorStart >= motorDuration) {
+      run_motor = false;
+      motorStart = 0;
+      analogWrite(MOTOR_PIN, 0);
+      Serial.println("Motor timed out");
+    }
   }
 
   // read terminal commands

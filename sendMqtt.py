@@ -5,7 +5,7 @@ import random
 import ssl
 
 # might change
-TOPIC = "esp32_c3_1"
+TOPIC = "esp32_1"
 
 # EMQX Connection Details
 BROKER = "lc600a99.ala.us-east-1.emqxsl.com"
