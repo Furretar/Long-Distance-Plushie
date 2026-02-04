@@ -46,6 +46,7 @@ open sendMqtt.py to send commands through mqtt, or send commands in serial monit
 - design and 3d print housing
 - solder rechargeable lipo battery
 - add variables for normal check frequency, slow checkout timeout, and slow check frequency
+- make button vibrate for length of time being held
 
 
 
