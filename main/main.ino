@@ -9,39 +9,38 @@
 #define BUTTON_PIN D8
 
 // change for each esp32
-const char* esp32_topic = "esp32_1";
+const char* thisTopic = "esp32_1";
+const char* targetTopic = "esp32_2";
 
 
-// RTC persistent vars
+// RTC persistent config vars
 RTC_DATA_ATTR int strength = 0;
 RTC_DATA_ATTR char default_ssid[32] = "ncsu";
 RTC_DATA_ATTR char default_password[64] = "";
-
-// global vars
-unsigned long motorStart = 0;
-const unsigned long minMotorDuration = 3000;  // ms
-int startTime = 0;
-int currentTime = 0;
-bool run_motor = false;
-bool variables_set = false;
-StaticJsonDocument<1024> doc;
-int networkCheckTimeout = 5000;  // timeout in ms
-int default_strength = 150;      // max 255
-bool offSwitch = false;
-
-// mqtt
+const unsigned long motorTimeout = 500;  // ms
 const char* MQTT_HOST = "lc600a99.ala.us-east-1.emqxsl.com";
 const int MQTT_PORT = 8883;
 const char* MQTT_USER = "a";
 const char* MQTT_PASS = "a";
+const char* info_topic = "info";
+
+// global vars
+unsigned long motorStart = 0;
+bool run_motor = false;
+bool variables_set = false;
+StaticJsonDocument<1024> doc;
+int networkCheckTimeout = 5000;  // timeout in ms
+bool offSwitch = false;
+
+
 WiFiClientSecure wifi;
 PubSubClient mqtt(wifi);
-const char* info_topic = "info";
+
 
 
 // send message
 void send_info(String message, String topic) {
-  message = String(esp32_topic) + ": " + message;
+  message = String(thisTopic) + ": " + message;
   if (mqtt.publish(info_topic, message.c_str())) {
   } else {
     Serial.println("Message failed to send.");
@@ -218,7 +217,7 @@ void handle_command(String message) {
   }
 
   else {
-    Serial.println((String)(esp32_topic) + ": " + message);
+    Serial.println((String)(thisTopic) + ": " + message);
   }
 }
 
@@ -300,7 +299,7 @@ void connect_mqtt() {
     unsigned long startAttempt = millis();
     if (mqtt.connect("esp32_1", MQTT_USER, MQTT_PASS)) {
       Serial.println("MQTT connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
-      mqtt.subscribe(esp32_topic, 1);
+      mqtt.subscribe(thisTopic, 1);
       break;
     }
 
@@ -385,7 +384,6 @@ void setup() {
 
   pinMode(MOTOR_PIN, OUTPUT);
   analogWrite(MOTOR_PIN, 0);
-  startTime = millis();
 
   setup_print_config();
   String ssid = connect_wifi();
@@ -401,12 +399,12 @@ void loop() {
   
 
   if (buttonState == HIGH && lastButtonState == LOW && run_motor == false) {
-    mqtt.publish(esp32_topic, "run");
+    mqtt.publish(thisTopic, "run");
   }
 
   // button released, stop motor
   if (buttonState == LOW && lastButtonState == HIGH && run_motor == true) {
-    mqtt.publish(esp32_topic, "stop");
+    mqtt.publish(thisTopic, "stop");
   }
 
 
@@ -426,7 +424,7 @@ void loop() {
 
   // timeout motor
   unsigned long now = millis();
-  if (motorStart > 0 && (now - motorStart) > minMotorDuration) {
+  if (motorStart > 0 && (now - motorStart) > motorTimeout) {
     run_motor = false;
     motorStart = 0;
     analogWrite(MOTOR_PIN, 0);
