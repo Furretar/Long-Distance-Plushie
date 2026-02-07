@@ -5,7 +5,6 @@
 #include <ArduinoJson.h>
 #include "esp_sleep.h"  // for deep sleep
 
-#define NORMAL_CHECK (5ULL * 1000000ULL)  // microseconds
 #define MOTOR_PIN D10
 #define BUTTON_PIN D2  // GPIO 4, RTC capable/can wake up from deep sleep
 
@@ -15,10 +14,11 @@ const char* targetTopic = "esp32_2";
 
 
 // RTC persistent/config vars
-const int checkMqttTime = 200;           // time awake to read retained mqtt messages, ms
-unsigned long AWAKE_DURATION = 10000;     // ms
-const unsigned long motorTimeout = 3000;  // ms
-const int maxPWM = 150;                   // out of 255, motor rated for 3 volts but powered by 3.7
+const int checkMqttTime = 200;                               // ms, default 200, time awake to read retained mqtt messages
+unsigned long stayAwakeAfterCommand = 10000;                 // ms, default 60,000
+const unsigned long motorTimeout = 3000;                     // ms, default 10,000
+const unsigned long long normalCheck = (5ULL * 1000000ULL);  // microseconds, default 15,000,000 sleep for this long before waking up to check again
+const int maxPWM = 150;                                      // out of 255, motor rated for 3 volts but powered by 3.7, default 150
 RTC_DATA_ATTR char default_ssid[32] = "ncsu";
 RTC_DATA_ATTR char default_password[64] = "";
 const char* MQTT_HOST = "lc600a99.ala.us-east-1.emqxsl.com";
@@ -425,7 +425,7 @@ void setup() {
   String ssid = connect_wifi();
   bool mqtt_connected = connect_mqtt();
 
-  esp_sleep_enable_timer_wakeup(NORMAL_CHECK);
+  esp_sleep_enable_timer_wakeup(normalCheck);
 }
 
 // button vars
@@ -474,7 +474,7 @@ void loop() {
   unsigned long timeSinceCommand = millis() - lastCommandTime;
 
   // sleep if not running motor
-  if (!run_motor && timeSinceMqtt > checkMqttTime && (!commandReceivedThisBoot || timeSinceCommand > AWAKE_DURATION)) {
+  if (!run_motor && timeSinceMqtt > checkMqttTime && (!commandReceivedThisBoot || timeSinceCommand > stayAwakeAfterCommand)) {
     esp_deep_sleep_start();
   }
 }
