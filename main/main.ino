@@ -3,27 +3,33 @@
 #include <WiFiClientSecure.h>
 #include <LittleFS.h>  // for logging
 #include <ArduinoJson.h>
+#include "esp_sleep.h"  // for deep sleep
 
-#define SLEEP_TIME 5
+#define NORMAL_CHECK (5ULL * 1000000ULL)  // microseconds
 #define MOTOR_PIN D10
-#define BUTTON_PIN D2 // GPIO 4, RTC capable/can wake up from deep sleep
+#define BUTTON_PIN D2  // GPIO 4, RTC capable/can wake up from deep sleep
 
 // change for each esp32
 const char* thisTopic = "esp32_1";
 const char* targetTopic = "esp32_2";
 
 
-// RTC persistent config vars
-RTC_DATA_ATTR int strength = 0;
+// RTC persistent/config vars
+const int checkMqttTime = 200;           // time awake to read retained mqtt messages, ms
+unsigned long AWAKE_DURATION = 10000;     // ms
+const unsigned long motorTimeout = 3000;  // ms
+const int maxPWM = 150;                   // out of 255, motor rated for 3 volts but powered by 3.7
 RTC_DATA_ATTR char default_ssid[32] = "ncsu";
 RTC_DATA_ATTR char default_password[64] = "";
-const unsigned long motorTimeout = 3000;  // ms
 const char* MQTT_HOST = "lc600a99.ala.us-east-1.emqxsl.com";
 const int MQTT_PORT = 8883;
 const char* MQTT_USER = "a";
 const char* MQTT_PASS = "a";
 const char* info_topic = "info";
-const int maxPWM = 150; // out of 255, motor rated for 3 volts but powered by 3.7
+// just initialize
+RTC_DATA_ATTR int strength = 0;
+
+
 
 // global vars
 unsigned long motorStart = 0;
@@ -32,10 +38,17 @@ bool variables_set = false;
 StaticJsonDocument<1024> doc;
 int networkCheckTimeout = 5000;  // timeout in ms
 bool offSwitch = false;
+unsigned long lastCommandTime = 0;
+unsigned long mqttConnectTime = 0;
+bool commandReceivedThisBoot = false;
+
 
 
 WiFiClientSecure wifi;
 PubSubClient mqtt(wifi);
+
+bool clearMessage = false;
+
 
 
 
@@ -161,7 +174,15 @@ void scan_print_networks() {
 void handle_command(String message) {
   message.trim();
 
-  if (message.startsWith("run")) {
+  if (message.equals("")) {
+    return;
+  }
+
+  Serial.println("resetting last command time");
+  lastCommandTime = millis();
+  commandReceivedThisBoot = true;
+
+  if (message.startsWith("run") && !run_motor) {
     int val = message.length() > 4 ? message.substring(4).toInt() : strength;
     if (val >= 0 && val <= 100) strength = val;
 
@@ -222,11 +243,17 @@ void handle_command(String message) {
   else {
     Serial.println((String)(thisTopic) + ": " + message);
   }
+
+  clearMessage = true;
 }
 
 
 String connect_wifi() {
   WiFi.mode(WIFI_STA);
+
+  if (WiFi.status() == WL_CONNECTED) {
+    return default_ssid;
+  }
 
   // scan and print networks, for debugging
   // unsigned long scanStart = millis();
@@ -286,7 +313,12 @@ String connect_wifi() {
 }
 
 // connect to mqtt
-void connect_mqtt() {
+bool connect_mqtt() {
+
+  if (mqtt.connected()) {
+    return true;
+  }
+
   wifi.setInsecure();
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
 
@@ -295,32 +327,31 @@ void connect_mqtt() {
 
   Serial.println("connecting to mqtt");
 
-
   int retries = 0;
 
   while (!mqtt.connected() && retries < 5) {
     unsigned long startAttempt = millis();
+
     if (mqtt.connect("esp32_1", MQTT_USER, MQTT_PASS)) {
       Serial.println("MQTT connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
+      mqttConnectTime = millis();
       mqtt.subscribe(thisTopic, 1);
-      break;
+      return true;
     }
 
-    Serial.print("MQTT failed (rc=");
-    Serial.print(mqtt.state());
-    Serial.println("), retrying in 5 seconds");
+    Serial.println("MQTT failed (rc=" + String(mqtt.state()) + ")");
 
     if (WiFi.status() != WL_CONNECTED) {
       Serial.println("WiFi lost, reconnecting...");
       connect_wifi();
     }
 
-    delay(5000);
+    delay(1000);
     retries++;
   }
-  if (!mqtt.connected()) {
-    Serial.println("MQTT connect failed after retries");
-  }
+
+  Serial.println("MQTT connect failed after retries");
+  return false;
 }
 
 
@@ -377,20 +408,24 @@ void setup_print_config() {
   Serial.println();
 }
 
+
 // setup
 void setup() {
   Serial.begin(115200);
   Serial.println("-------------------------");
-
   pinMode(BUTTON_PIN, INPUT);
   digitalWrite(MOTOR_PIN, LOW);
-
   pinMode(MOTOR_PIN, OUTPUT);
   analogWrite(MOTOR_PIN, 0);
-
   setup_print_config();
+
+  lastCommandTime = 0;
+
+  // connect wifi and mqtt
   String ssid = connect_wifi();
-  connect_mqtt();
+  bool mqtt_connected = connect_mqtt();
+
+  esp_sleep_enable_timer_wakeup(NORMAL_CHECK);
 }
 
 // button vars
@@ -399,37 +434,26 @@ int lastButtonState = LOW;
 // loop
 void loop() {
   int buttonState = digitalRead(BUTTON_PIN);
-  
-
   if (buttonState == HIGH && lastButtonState == LOW && run_motor == false) {
     mqtt.publish(thisTopic, "run");
   }
-
   // button released, stop motor
   if (buttonState == LOW && lastButtonState == HIGH && run_motor == true) {
     mqtt.publish(thisTopic, "stop");
   }
 
-
-  lastButtonState = buttonState;
-
-  if (!mqtt.connected()) {
-    unsigned long now = millis();
-    static unsigned long lastReconnect = 0;
-    if (now - lastReconnect > 5000) {
-      lastReconnect = now;
-      Serial.println("MQTT disconnected! Reconnecting...");
-      connect_mqtt();
-    }
+  if (clearMessage) {
+    Serial.println("clearing topic");
+    mqtt.publish(thisTopic, "", true);
+    clearMessage = false;
   }
+  lastButtonState = buttonState;
 
   mqtt.loop();
 
-  // timeout motor
-  unsigned long now = millis();
-  if (motorStart > 0 && (now - motorStart) > motorTimeout) {
+  // motor timeout
+  if (run_motor && millis() - motorStart > motorTimeout) {
     run_motor = false;
-    motorStart = 0;
     analogWrite(MOTOR_PIN, 0);
     Serial.println("Motor timed out");
   }
@@ -438,5 +462,19 @@ void loop() {
   if (Serial.available()) {
     String message = Serial.readStringUntil('\n');
     handle_command(message);
+  }
+
+  // wait for retained messages to arrive
+  static unsigned long loopStartTime = 0;
+  if (loopStartTime == 0) {
+    loopStartTime = millis();
+  }
+
+  unsigned long timeSinceMqtt = millis() - mqttConnectTime;
+  unsigned long timeSinceCommand = millis() - lastCommandTime;
+
+  // sleep if not running motor
+  if (!run_motor && timeSinceMqtt > checkMqttTime && (!commandReceivedThisBoot || timeSinceCommand > AWAKE_DURATION)) {
+    esp_deep_sleep_start();
   }
 }
