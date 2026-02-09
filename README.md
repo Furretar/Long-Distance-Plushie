@@ -7,13 +7,15 @@ open sendMqtt.py to send commands through mqtt, or send commands in serial monit
 
 `stop` - toggles the motor off
 
-`strength [100]` - changes default strength in the config
+`config [key] [value]`, example: `config strength 100` - changes value of the entry in the config
 
 `delete` - deletes the config and recreates it with default values
 
 `delete [ssid]` - deletes the wifi network entry with the listed name/ssid
 
 `add network [name] [password]` - adds a network with the name/ssid and password
+
+`print config` - prints config to the terminal
 
 # Logic
 the esp32 communicates over wifi using mqtt. it has a hardcoded default wifi network. it will automatically try to connect to this one every time it wakes up. you can add networks to the config via the serial terminal or an mqtt command, and it will check those networks if the default one fails after 5 seconds. after connecting to a new network, the default network is changed to the new network. the new default network will persist sleep cycles but not after resets, but the config will always persist. the battery can be recharged by plugging in the device.
