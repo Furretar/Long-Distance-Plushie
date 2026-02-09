@@ -9,9 +9,9 @@ open sendMqtt.py to send commands through mqtt, or send commands in serial monit
 
 `config [key] [value]`, example: `config strength 100` - changes value of the entry in the config
 
-`delete` - deletes the config and recreates it with default values
+`delete config` - deletes the config and recreates it with default values
 
-`delete [ssid]` - deletes the wifi network entry with the listed name/ssid
+`delete network [ssid]` - deletes the wifi network entry with the listed name/ssid
 
 `add network [name] [password]` - adds a network with the name/ssid and password
 
