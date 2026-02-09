@@ -1,3 +1,20 @@
+# Commands
+open sendMqtt.py to send commands through mqtt, or send commands in serial monitor in arudino ide
+
+`run` - toggles the motor on
+
+`run [100]` - toggles the motor with strength 100
+
+`stop` - toggles the motor off
+
+`strength [100]` - changes default strength in the config
+
+`delete` - deletes the config and recreates it with default values
+
+`delete [ssid]` - deletes the wifi network entry with the listed name/ssid
+
+`add network [name] [password]` - adds a network with the name/ssid and password
+
 # Logic
 the esp32 communicates over wifi using mqtt. it has a hardcoded default wifi network. it will automatically try to connect to this one every time it wakes up. you can add networks to the config via the serial terminal or an mqtt command, and it will check those networks if the default one fails after 5 seconds. after connecting to a new network, the default network is changed to the new network. the new default network will persist sleep cycles but not after resets, but the config will always persist. the battery can be recharged by plugging in the device.
 
@@ -26,20 +43,7 @@ commands can be sent to the device through the `Iot MQTT Panel` app. you can als
   
 after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, and `info`. add a text input and output for esp32_1 and esp32_2, and a text output for info. 
 
-# Commands
-open sendMqtt.py to send commands through mqtt, or send commands in serial monitor in arudino ide
 
-`run` - toggles the motor on
-
-`run 100` - toggles the motor with strength 100
-
-`stop` - toggles the motor off
-
-`strength 100` - changes default strength in the config
-
-`delete` - deletes the config and recreates it with default values
-
-`delete ssid` - deletes the entry with the listed ssid
 
 # To-do
 - setup led
