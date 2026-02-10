@@ -8,51 +8,151 @@
 #define MOTOR_PIN D10
 #define BUTTON_PIN D2  // GPIO 4, RTC capable/can wake up from deep sleep
 
+//// configurable default values
 // change for each esp32
 const char* thisTopic = "esp32_1";
 const char* targetTopic = "esp32_2";
 
+// change for other setups
+const char* default_mqtt_host = "lc600a99.ala.us-east-1.emqxsl.com";
+const int default_mqtt_port = 8883;
+const char* default_mqtt_user = "a";
+const char* default_mqtt_pass = "a";
+const char* default_info_topic = "info";
+char default_ssid[32] = "ncsu";
+char default_password[64] = "";
 
-// RTC persistent/config vars
-const int checkMqttTime = 200;                               // ms, default 200, time awake to read retained mqtt messages
-unsigned long stayAwakeAfterCommand = 10000;                 // ms, default 60,000
-const unsigned long motorTimeout = 3000;                     // ms, default 10,000
-const unsigned long long normalCheck = (5ULL * 1000000ULL);  // microseconds, default 15,000,000 sleep for this long before waking up to check again
-const int maxPWM = 150;                                      // out of 255, motor rated for 3 volts but powered by 3.7, default 150
-RTC_DATA_ATTR char default_ssid[32] = "ncsu";
-RTC_DATA_ATTR char default_password[64] = "";
-const char* MQTT_HOST = "lc600a99.ala.us-east-1.emqxsl.com";
-const int MQTT_PORT = 8883;
-const char* MQTT_USER = "a";
-const char* MQTT_PASS = "a";
-const char* info_topic = "info";
-// just initialize
-RTC_DATA_ATTR int strength = 0;
+// default config values
+const int default_check_mqtt_time = 200;             // ms, default 200, time awake to read retained mqtt messages
+const int default_stay_awake_after_command = 60000;  // ms, default 60,000
+const int default_motor_timeout = 3000;              // ms, default 10,000
+const int default_normal_check = 5ULL * 1000000ULL;  // microseconds, default 15,000,000, sleep for this long before waking up to check again
+const int default_max_pwm = 150;                     // out of 255, motor rated for 3 volts but powered by 3.7, default 150
+const int default_strength = 20;
+
+// global RTC persistent/config vars
+RTC_DATA_ATTR int check_mqtt_time;
+RTC_DATA_ATTR unsigned long stay_awake_after_command;
+RTC_DATA_ATTR unsigned long motor_timeout;
+RTC_DATA_ATTR unsigned long long normal_check;
+RTC_DATA_ATTR int max_pwm;
+RTC_DATA_ATTR int mqtt_port;
+RTC_DATA_ATTR char mqtt_host[128];
+RTC_DATA_ATTR char mqtt_user[64];
+RTC_DATA_ATTR char mqtt_pass[64];
+RTC_DATA_ATTR char info_topic[64];
+RTC_DATA_ATTR int strength;
+RTC_DATA_ATTR bool no_sleep;  // for debugging
 
 
 
 // global vars
-unsigned long motorStart = 0;
+bool off_switch = false;
+
 bool run_motor = false;
+bool clear_message = false;
 bool variables_set = false;
-StaticJsonDocument<1024> doc;
-int networkCheckTimeout = 5000;  // timeout in ms
-bool offSwitch = false;
-unsigned long lastCommandTime = 0;
-unsigned long mqttConnectTime = 0;
 bool commandReceivedThisBoot = false;
 
+StaticJsonDocument<1024> doc;
+int networkCheckTimeout = 2000;  // timeout in ms
+unsigned long motorStart = 0;
 
-
+unsigned long lastCommandTime = 0;
+unsigned long mqttConnectTime = 0;
 WiFiClientSecure wifi;
 PubSubClient mqtt(wifi);
 
-bool clearMessage = false;
+
+
+void loadString(char* dst, size_t dstSize, JsonDocument& doc, const char* key, const char* def) {
+  const char* src = doc[key] | def;
+  strncpy(dst, src, dstSize - 1);
+  dst[dstSize - 1] = '\0';
+}
 
 
 
+// create config with default values
+void setup_print_config() {
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS mount failed");
+    return;
+  }
 
-// send message
+  // wipe memory from doc
+  doc.clear();
+
+  // create file if it doesn't exist
+  if (!LittleFS.exists("/networks.json")) {
+    Serial.println("creating networks.json");
+    File file = LittleFS.open("/networks.json", "w");
+
+    // initialize keys
+    JsonArray networks = doc.createNestedArray("networks");
+    JsonObject defaultNetwork = networks.createNestedObject();
+    defaultNetwork["ssid"] = default_ssid;
+    defaultNetwork["password"] = default_password;
+    doc["check_mqtt_time"] = default_check_mqtt_time;
+    doc["stay_awake_after_command"] = default_stay_awake_after_command;
+    doc["motor_timeout"] = default_motor_timeout;
+    doc["normal_check"] = default_normal_check;
+    doc["max_pwm"] = default_max_pwm;
+    doc["mqtt_host"] = default_mqtt_host;
+    doc["mqtt_port"] = default_mqtt_port;
+    doc["mqtt_user"] = default_mqtt_user;
+    doc["mqtt_pass"] = default_mqtt_pass;
+    doc["info_topic"] = default_info_topic;
+    doc["strength"] = default_strength;
+
+    // write to file and close
+    serializeJsonPretty(doc, file);
+    file.close();
+    Serial.println("networks.json created");
+  }
+
+  // open file for reading
+  File file = LittleFS.open("/networks.json", "r");
+  if (!file) {
+    Serial.println("failed to open networks.json");
+    return;
+  }
+
+  // check errors
+  DeserializationError err = deserializeJson(doc, file);
+  file.close();
+  if (err) {
+    Serial.print("Failed to parse networks.json: ");
+    Serial.println(err.c_str());
+    return;
+  }
+
+  // load vars from config to RTC memory
+  load_config_vars();
+
+  // print config
+  Serial.println("networks.json:");
+  serializeJsonPretty(doc, Serial);
+  Serial.println();
+}
+
+
+// set global variables with config
+void load_config_vars() {
+  check_mqtt_time = doc["check_mqtt_time"];
+  stay_awake_after_command = doc["stay_awake_after_command"];
+  motor_timeout = doc["motor_timeout"];
+  normal_check = doc["normal_check"];
+  max_pwm = doc["max_pwm"];
+  mqtt_port = doc["mqtt_port"];
+  loadString(mqtt_user, sizeof(mqtt_user), doc, "mqtt_user", default_mqtt_user);
+  loadString(mqtt_pass, sizeof(mqtt_pass), doc, "mqtt_pass", default_mqtt_pass);
+  loadString(info_topic, sizeof(info_topic), doc, "info_topic", default_info_topic);
+  loadString(mqtt_host, sizeof(mqtt_host), doc, "mqtt_host", default_mqtt_host);
+  strength = doc["strength"];
+}
+
+// send notification to info topic
 void send_info(String message, String topic) {
   message = String(thisTopic) + ": " + message;
   if (mqtt.publish(info_topic, message.c_str())) {
@@ -114,22 +214,28 @@ void delete_network(const char* ssid) {
   setup_print_config();
 }
 
-void set_strength_in_json(int new_strength) {
+
+void set_config_value_int(const char* key, int new_value) {
   if (!LittleFS.begin()) {
     Serial.println("LittleFS mount failed");
     return;
   }
 
-  // read existing json
   File file = LittleFS.open("/networks.json", "r");
   if (!file) {
     Serial.println("Failed to open networks.json for reading");
     return;
   }
 
+  DeserializationError err = deserializeJson(doc, file);
   file.close();
+  if (err) {
+    Serial.print("Failed to parse networks.json: ");
+    Serial.println(err.c_str());
+    return;
+  }
 
-  doc["strength"] = new_strength;
+  doc[key] = new_value;
 
   File fileOut = LittleFS.open("/networks.json", "w");
   if (!fileOut) {
@@ -139,9 +245,43 @@ void set_strength_in_json(int new_strength) {
   serializeJsonPretty(doc, fileOut);
   fileOut.close();
 
-  Serial.print("Updated strength to ");
-  Serial.println(new_strength);
+  Serial.print("Updated ");
+  Serial.print(key);
+  Serial.print(" to ");
+  Serial.println(new_value);
 }
+
+void set_config_value_string(const char* key, const char* value) {
+  if (!LittleFS.begin()) {
+    Serial.println("LittleFS mount failed");
+    return;
+  }
+
+  File file = LittleFS.open("/networks.json", "r");
+  if (!file) {
+    Serial.println("Failed to open networks.json for reading");
+    return;
+  }
+
+  DeserializationError err = deserializeJson(doc, file);
+  file.close();
+  if (err) {
+    Serial.print("failed to parse networks.json: ");
+    Serial.println(err.c_str());
+    return;
+  }
+
+  doc[key] = value;
+
+  File fileOut = LittleFS.open("/networks.json", "w");
+  if (!fileOut) {
+    Serial.println("failed to open networks.json for writing");
+    return;
+  }
+  serializeJsonPretty(doc, fileOut);
+  fileOut.close();
+}
+
 
 // reads and runs commands
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
@@ -186,7 +326,7 @@ void handle_command(String message) {
     int val = message.length() > 4 ? message.substring(4).toInt() : strength;
     if (val >= 0 && val <= 100) strength = val;
 
-    int motorStrength = (val * maxPWM) / 100;
+    int motorStrength = (val * max_pwm) / 100;
 
     run_motor = true;
     motorStart = millis();
@@ -194,29 +334,74 @@ void handle_command(String message) {
     Serial.println("Motor ON (strength: " + String(val) + "%)");
   }
 
-  else if (message.startsWith("stop")) {
+  else if (message.equals("stop")) {
     run_motor = false;
     motorStart = 0;
     analogWrite(MOTOR_PIN, 0);
     Serial.println("stopping");
   }
 
-  else if (message.startsWith("off")) {
-    offSwitch = true;
+  else if (message.equals("off")) {
+    off_switch = true;
   }
 
-  else if (message.startsWith("strength")) {
-    int val = message.length() > 9 ? message.substring(9).toInt() : strength;
-    if (val >= 0 && val <= maxPWM) {
-      strength = val;
-      set_strength_in_json(val);
-      setup_print_config();
-      Serial.println("Strength updated: " + String(strength));
+  else if (message.startsWith("config")) {
+    String params = message.substring(7);
+    params.trim();
+
+    int firstSpace = params.indexOf(' ');
+    if (firstSpace < 0) {
+      Serial.println("usage: config <key> <value>");
+      return;
     }
 
-    else {
-      Serial.println("Invalid strength value: " + String(val));
+    String key = params.substring(0, firstSpace);
+    String valueStr = params.substring(firstSpace + 1);
+    valueStr.trim();
+
+    // list of integer keys
+    const char* intKeys[] = {
+      "strength", "max_pwm", "motor_timeout",
+      "check_mqtt_time", "stay_awake_after_command", "normal_check", nullptr
+    };
+    // list of string keys
+    const char* stringKeys[] = {
+      "mqtt_host", "mqtt_port", "mqtt_user", "mqtt_pass", "info_topic", nullptr
+    };
+    bool handled = false;
+
+    // check if it's an integer key
+    for (int i = 0; intKeys[i] != nullptr; i++) {
+      if (key == intKeys[i]) {
+        int valueInt = valueStr.toInt();
+        set_config_value_int(key.c_str(), valueInt);
+        handled = true;
+        break;
+      }
     }
+
+    // check if it's a string key
+    if (!handled) {
+      for (int i = 0; stringKeys[i] != nullptr; i++) {
+        if (key == stringKeys[i]) {
+          set_config_value_string(key.c_str(), valueStr.c_str());
+          handled = true;
+          break;
+        }
+      }
+    }
+    if (!handled) {
+      Serial.println("Unknown config key: " + key);
+    }
+    setup_print_config();
+  }
+
+  else if (message.equals("sleep on")) {
+    no_sleep = false;
+  }
+
+  else if (message.equals("sleep off")) {
+    no_sleep = true;
   }
 
   else if (message.startsWith("add network")) {
@@ -232,80 +417,84 @@ void handle_command(String message) {
     delete_network(ssid.c_str());
   }
 
-  else if (message.startsWith("delete")) {
+  else if (message.equals("delete config")) {
     delete_config();
   }
 
-  else if (message.startsWith("config")) {
+  else if (message.startsWith("print config")) {
     setup_print_config();
   }
 
   else {
-    Serial.println((String)(thisTopic) + ": " + message);
+    Serial.println("Invalid command");
   }
 
-  clearMessage = true;
+  clear_message = true;
 }
 
 
 String connect_wifi() {
+  const int maxRetries = 5;
+  const unsigned long retryDelay = 2000;
   WiFi.mode(WIFI_STA);
-
-  if (WiFi.status() == WL_CONNECTED) {
-    return default_ssid;
-  }
-
-  // scan and print networks, for debugging
-  // unsigned long scanStart = millis();
-  // scan_print_networks();
-  // Serial.println("networks scan: " + String((millis() - scanStart) / 1000.0) + " seconds");
-
   JsonArray networks = doc["networks"].as<JsonArray>();
 
-  // try to connect to last connected network first
-  if (strlen(default_ssid) > 0) {
-    Serial.println("connecting to last network: " + String(default_ssid));
+  for (int attempt = 0; attempt < maxRetries; attempt++) {
 
-    WiFi.begin(default_ssid, default_password);
-    unsigned long startAttempt = millis();
+    // try to connect to last connected network first
+    if (strlen(default_ssid) > 0) {
+      Serial.println("connecting to last network: " + String(default_ssid));
 
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < networkCheckTimeout) {
-      yield();
+      WiFi.disconnect(true);
+      delay(100);  // short pause to let driver reset
+      WiFi.begin(default_ssid, default_password);
+
+      unsigned long startAttempt = millis();
+
+      while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < networkCheckTimeout) {
+        yield();
+      }
+
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("WiFi connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
+        return default_ssid;
+      }
+
+      Serial.println("Failed to connect to last network");
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.println("WiFi connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
-      return default_ssid;
+    // try every network in config
+    for (JsonObject network : networks) {
+      const char* ssid = network["ssid"];
+      const char* password = network["password"];
+      Serial.println("trying network in config: " + String(ssid));
+
+      WiFi.disconnect(true);
+      delay(100);  // short pause to let driver reset
+      WiFi.begin(ssid, password);
+
+      unsigned long startAttempt = millis();
+      const unsigned long timeout = networkCheckTimeout;
+
+      while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < networkCheckTimeout) {
+        yield();
+      }
+
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("WiFi connected to: " + String(ssid) + " in " + String((millis() - startAttempt) / 1000.0) + " seconds");
+        strncpy(default_ssid, ssid, sizeof(default_ssid) - 1);
+        default_ssid[sizeof(default_ssid) - 1] = '\0';
+        strncpy(default_password, password, sizeof(default_password) - 1);
+        default_password[sizeof(default_password) - 1] = '\0';
+        return ssid;
+      }
+
+      Serial.println("failed: " + String(ssid));
     }
-
-    Serial.println("Failed to connect to last network");
-    return "";
-  }
-  // try every network in config
-  for (JsonObject network : networks) {
-    const char* ssid = network["ssid"];
-    const char* password = network["password"];
-    Serial.println("trying network in config: " + String(ssid));
-
-    WiFi.begin(ssid, password);
-
-    unsigned long startAttempt = millis();
-    const unsigned long timeout = networkCheckTimeout;
-
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < networkCheckTimeout) {
-      yield();
+    if (attempt < maxRetries - 1) {
+      Serial.println("Retrying WiFi in " + String(retryDelay / 1000) + " seconds...");
+      delay(retryDelay);
     }
-
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.println("WiFi connected to: " + String(ssid) + " in " + String((millis() - startAttempt) / 1000.0) + " seconds");
-      strncpy(default_ssid, ssid, sizeof(default_ssid) - 1);
-      default_ssid[sizeof(default_ssid) - 1] = '\0';
-      strncpy(default_password, password, sizeof(default_password) - 1);
-      default_password[sizeof(default_password) - 1] = '\0';
-      return ssid;
-    }
-
-    Serial.println("failed: " + String(ssid));
   }
 
   Serial.println("could not connect to any network");
@@ -315,12 +504,16 @@ String connect_wifi() {
 // connect to mqtt
 bool connect_mqtt() {
 
+  if (WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
+
   if (mqtt.connected()) {
     return true;
   }
 
   wifi.setInsecure();
-  mqtt.setServer(MQTT_HOST, MQTT_PORT);
+  mqtt.setServer(mqtt_host, mqtt_port);
 
   // make mqtt use the callback function above when looping
   mqtt.setCallback(mqtt_callback);
@@ -332,81 +525,30 @@ bool connect_mqtt() {
   while (!mqtt.connected() && retries < 5) {
     unsigned long startAttempt = millis();
 
-    if (mqtt.connect("esp32_1", MQTT_USER, MQTT_PASS)) {
-      Serial.println("MQTT connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
+    if (mqtt.connect("esp32_1", mqtt_user, mqtt_pass)) {
+      Serial.println("mqtt connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
       mqttConnectTime = millis();
       mqtt.subscribe(thisTopic, 1);
       return true;
     }
 
-    Serial.println("MQTT failed (rc=" + String(mqtt.state()) + ")");
-
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("WiFi lost, reconnecting...");
-      connect_wifi();
-    }
+    Serial.println("mqtt failed (rc=" + String(mqtt.state()) + ")");
 
     delay(1000);
     retries++;
   }
 
-  Serial.println("MQTT connect failed after retries");
+  Serial.println("mqtt connect failed after retries");
   return false;
 }
 
 
-// config
-void setup_print_config() {
-  if (!LittleFS.begin(true)) {
-    Serial.println("LittleFS mount failed");
-    return;
-  }
 
-  doc.clear();
 
-  // create file if it doesn't exist
-  if (!LittleFS.exists("/networks.json")) {
-    Serial.println("creating networks.json");
-    File file = LittleFS.open("/networks.json", "w");
 
-    doc["strength"] = 50;
-    JsonArray networks = doc.createNestedArray("networks");
-    JsonObject defaultNetwork = networks.createNestedObject();
-    defaultNetwork["ssid"] = default_ssid;
-    defaultNetwork["password"] = default_password;
 
-    serializeJsonPretty(doc, file);
-    file.close();
 
-    Serial.println("networks.json created");
-  }
 
-  // open file for reading
-  File file = LittleFS.open("/networks.json", "r");
-  if (!file) {
-    Serial.println("failed to open networks.json");
-    return;
-  }
-
-  DeserializationError err = deserializeJson(doc, file);
-  file.close();
-
-  if (err) {
-    Serial.print("Failed to parse networks.json: ");
-    Serial.println(err.c_str());
-    return;
-  }
-
-  if (!variables_set) {
-    strength = doc["strength"] | 150;
-    variables_set = true;
-  }
-
-  // print config
-  Serial.println("networks.json:");
-  serializeJsonPretty(doc, Serial);
-  Serial.println();
-}
 
 
 // setup
@@ -419,13 +561,18 @@ void setup() {
   analogWrite(MOTOR_PIN, 0);
   setup_print_config();
 
+  if (!variables_set) {
+    no_sleep = false;
+    variables_set = true;
+  }
+
   lastCommandTime = 0;
 
   // connect wifi and mqtt
   String ssid = connect_wifi();
   bool mqtt_connected = connect_mqtt();
 
-  esp_sleep_enable_timer_wakeup(normalCheck);
+  esp_sleep_enable_timer_wakeup(normal_check);
 }
 
 // button vars
@@ -442,17 +589,17 @@ void loop() {
     mqtt.publish(thisTopic, "stop");
   }
 
-  if (clearMessage) {
+  if (clear_message) {
     Serial.println("clearing topic");
     mqtt.publish(thisTopic, "", true);
-    clearMessage = false;
+    clear_message = false;
   }
   lastButtonState = buttonState;
 
   mqtt.loop();
 
   // motor timeout
-  if (run_motor && millis() - motorStart > motorTimeout) {
+  if (run_motor && millis() - motorStart > motor_timeout) {
     run_motor = false;
     analogWrite(MOTOR_PIN, 0);
     Serial.println("Motor timed out");
@@ -470,11 +617,12 @@ void loop() {
     loopStartTime = millis();
   }
 
-  unsigned long timeSinceMqtt = millis() - mqttConnectTime;
+  unsigned long timeSincemqtt = millis() - mqttConnectTime;
   unsigned long timeSinceCommand = millis() - lastCommandTime;
 
   // sleep if not running motor
-  if (!run_motor && timeSinceMqtt > checkMqttTime && (!commandReceivedThisBoot || timeSinceCommand > stayAwakeAfterCommand)) {
+  if (!run_motor && !no_sleep && timeSincemqtt > check_mqtt_time && (!commandReceivedThisBoot || timeSinceCommand > stay_awake_after_command)) {
+    Serial.println("sleeping for: " + String(normal_check / 1000000.0) + " seconds");
     esp_deep_sleep_start();
   }
 }
