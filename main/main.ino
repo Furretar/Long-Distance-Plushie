@@ -14,7 +14,7 @@ const char* thisTopic = "esp32_1";
 const char* targetTopic = "esp32_2";
 
 // change for other setups
-const char* default_mqtt_host = "lc600a99.ala.us-east-1.emqxsl.com";
+const char* default_mqtt_host = "h862f16c.ala.us-east-1.emqxsl.com";
 const int default_mqtt_port = 8883;
 const char* default_mqtt_user = "a";
 const char* default_mqtt_pass = "a";
@@ -43,12 +43,12 @@ RTC_DATA_ATTR char mqtt_pass[64];
 RTC_DATA_ATTR char info_topic[64];
 RTC_DATA_ATTR int strength;
 RTC_DATA_ATTR bool no_sleep;  // for debugging
+RTC_DATA_ATTR bool firstBoot = true;
 
 
 
 // global vars
 bool off_switch = false;
-
 bool run_motor = false;
 bool clear_message = false;
 bool variables_set = false;
@@ -155,7 +155,7 @@ void load_config_vars() {
 // send notification to info topic
 void send_info(String message, String topic) {
   message = String(thisTopic) + ": " + message;
-  if (mqtt.publish(info_topic, message.c_str())) {
+  if (mqtt.publish(topic.c_str(), message.c_str())) {
   } else {
     Serial.println("Message failed to send.");
   }
@@ -514,15 +514,12 @@ bool connect_mqtt() {
 
   wifi.setInsecure();
   mqtt.setServer(mqtt_host, mqtt_port);
-
-  // make mqtt use the callback function above when looping
   mqtt.setCallback(mqtt_callback);
 
-  Serial.println("connecting to mqtt");
-
+  Serial.println("attempting mqtt connection...");
   int retries = 0;
 
-  while (!mqtt.connected() && retries < 5) {
+  while (!mqtt.connected() && retries < 1) {
     unsigned long startAttempt = millis();
 
     if (mqtt.connect("esp32_1", mqtt_user, mqtt_pass)) {
@@ -531,14 +528,12 @@ bool connect_mqtt() {
       mqtt.subscribe(thisTopic, 1);
       return true;
     }
-
     Serial.println("mqtt failed (rc=" + String(mqtt.state()) + ")");
-
     delay(1000);
     retries++;
   }
 
-  Serial.println("mqtt connect failed after retries");
+  Serial.println("mqtt failed (rc=" + String(mqtt.state()) + ")");
   return false;
 }
 
@@ -572,6 +567,32 @@ void setup() {
   String ssid = connect_wifi();
   bool mqtt_connected = connect_mqtt();
 
+  // short window to read serial commands
+  unsigned long serialWindow = 50; 
+  unsigned long start = millis();
+  while (millis() - start < serialWindow) {
+    if (Serial.available()) {
+      String message = Serial.readStringUntil('\n');
+      handle_command(message);
+    }
+  }
+
+
+  if (!mqtt_connected) {
+    Serial.println("MQTT connect failed, going to deep sleep");
+    esp_deep_sleep_start();
+  }
+
+
+  // send config to info topic
+  if (firstBoot) {
+    mqtt.setBufferSize(2048);
+    String configMessage;
+    serializeJsonPretty(doc, configMessage);
+    send_info(configMessage, String(info_topic));
+    firstBoot = false;
+  }
+
   esp_sleep_enable_timer_wakeup(normal_check);
 }
 
@@ -580,6 +601,9 @@ int lastButtonState = LOW;
 
 // loop
 void loop() {
+
+
+
   int buttonState = digitalRead(BUTTON_PIN);
   if (buttonState == HIGH && lastButtonState == LOW && run_motor == false) {
     mqtt.publish(thisTopic, "run");
@@ -623,6 +647,7 @@ void loop() {
   // sleep if not running motor
   if (!run_motor && !no_sleep && timeSincemqtt > check_mqtt_time && (!commandReceivedThisBoot || timeSinceCommand > stay_awake_after_command)) {
     Serial.println("sleeping for: " + String(normal_check / 1000000.0) + " seconds");
+    Serial.flush();
     esp_deep_sleep_start();
   }
 }
