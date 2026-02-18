@@ -550,7 +550,7 @@ bool connect_mqtt() {
 void setup() {
   Serial.begin(115200);
   Serial.println("-------------------------");
-  pinMode(BUTTON_PIN, INPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
   digitalWrite(MOTOR_PIN, LOW);
   pinMode(MOTOR_PIN, OUTPUT);
   analogWrite(MOTOR_PIN, 0);
@@ -568,7 +568,7 @@ void setup() {
   bool mqtt_connected = connect_mqtt();
 
   // short window to read serial commands
-  unsigned long serialWindow = 50; 
+  unsigned long serialWindow = 50;
   unsigned long start = millis();
   while (millis() - start < serialWindow) {
     if (Serial.available()) {
@@ -597,7 +597,7 @@ void setup() {
 }
 
 // button vars
-int lastButtonState = LOW;
+int lastButtonState = HIGH;
 
 // loop
 void loop() {
@@ -605,11 +605,11 @@ void loop() {
 
 
   int buttonState = digitalRead(BUTTON_PIN);
-  if (buttonState == HIGH && lastButtonState == LOW && run_motor == false) {
+  if (buttonState == LOW && lastButtonState == HIGH && !run_motor) {
     mqtt.publish(thisTopic, "run");
   }
   // button released, stop motor
-  if (buttonState == LOW && lastButtonState == HIGH && run_motor == true) {
+  if (buttonState == HIGH && lastButtonState == LOW && run_motor) {
     mqtt.publish(thisTopic, "stop");
   }
 
