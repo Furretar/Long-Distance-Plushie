@@ -4,9 +4,12 @@
 #include <LittleFS.h>  // for logging
 #include <ArduinoJson.h>
 #include "esp_sleep.h"  // for deep sleep
+#include <time.h>
 
+#define BATTERY_PIN D0
 #define MOTOR_PIN D10
 #define BUTTON_PIN D2  // GPIO 4, RTC capable/can wake up from deep sleep
+#define BUTTON_GPIO 4
 
 //// configurable default values
 // change for each esp32
@@ -47,12 +50,15 @@ RTC_DATA_ATTR bool firstBoot = true;
 
 
 
+
+
 // global vars
 bool off_switch = false;
 bool run_motor = false;
 bool clear_message = false;
 bool variables_set = false;
 bool commandReceivedThisBoot = false;
+int lastButtonState = HIGH;
 
 StaticJsonDocument<1024> doc;
 int networkCheckTimeout = 2000;  // timeout in ms
@@ -64,6 +70,19 @@ WiFiClientSecure wifi;
 PubSubClient mqtt(wifi);
 
 
+// track day for printing voltage
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = -5 * 3600;  // adjust timezone
+RTC_DATA_ATTR int lastReportedDay = -1;
+
+void initTime() {
+  configTime(gmtOffset_sec, 0, ntpServer);
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+}
 
 void loadString(char* dst, size_t dstSize, JsonDocument& doc, const char* key, const char* def) {
   const char* src = doc[key] | def;
@@ -425,6 +444,14 @@ void handle_command(String message) {
     setup_print_config();
   }
 
+  else if (message.startsWith("print voltage")) {
+    read_and_print_voltage();
+  }
+
+  else if (message.startsWith("sleep")) {
+    esp_deep_sleep_start();
+  }
+
   else {
     Serial.println("Invalid command");
   }
@@ -538,12 +565,22 @@ bool connect_mqtt() {
 }
 
 
+void read_and_print_voltage() {
+  uint32_t sum_mV = 0;
 
+  for (int i = 0; i < 16; i++) {
+    sum_mV += analogReadMilliVolts(BATTERY_PIN);
+  }
 
+  float adcVoltage = sum_mV / 16.0 / 1000.0;  // average and convert to volts
+  float batteryVolts = adcVoltage * 2.0;      // factor = (R1 + R2)/R2, 2 for 220k:220k
 
-
-
-
+  String msg = "Battery voltage: " + String(batteryVolts, 3) + " V";
+  Serial.print("Battery voltage: ");
+  Serial.print(batteryVolts, 3);
+  Serial.println(" V");
+  send_info(msg, String(info_topic));
+}
 
 
 // setup
@@ -555,6 +592,7 @@ void setup() {
   pinMode(MOTOR_PIN, OUTPUT);
   analogWrite(MOTOR_PIN, 0);
   setup_print_config();
+
 
   if (!variables_set) {
     no_sleep = false;
@@ -586,6 +624,10 @@ void setup() {
 
   // send config to info topic
   if (firstBoot) {
+    if (mqtt_connected) {
+      read_and_print_voltage();
+    }
+
     mqtt.setBufferSize(2048);
     String configMessage;
     serializeJsonPretty(doc, configMessage);
@@ -593,11 +635,22 @@ void setup() {
     firstBoot = false;
   }
 
+  // send voltage to info topic once a day
+  initTime();
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return;
+  int currentDay = timeinfo.tm_mday;
+  if (lastReportedDay != currentDay) {
+    read_and_print_voltage();
+    lastReportedDay = currentDay;
+  }
+
+  // wake up from button or timer
+  esp_deep_sleep_enable_gpio_wakeup(1 << BUTTON_GPIO, ESP_GPIO_WAKEUP_GPIO_LOW);
   esp_sleep_enable_timer_wakeup(normal_check);
 }
 
-// button vars
-int lastButtonState = HIGH;
+
 
 // loop
 void loop() {
