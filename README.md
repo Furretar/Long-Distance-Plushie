@@ -17,6 +17,8 @@ open sendMqtt.py to send commands through mqtt, or send commands in serial monit
 
 `print config` - prints config to the terminal
 
+`print voltage` - prints voltage to the terminal and info topic mqtt
+
 you may need to wait to send a command if it's trying to connect to mqtt
 
 # Logic
