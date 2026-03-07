@@ -10,30 +10,33 @@
 #define MOTOR_PIN D10
 #define BUTTON_PIN D2  // GPIO 4, RTC capable/can wake up from deep sleep
 #define BUTTON_GPIO 4
+#define RED_PIN D9
+#define GREEN_PIN D8
+#define BLUE_PIN D7
 
 //// configurable default values
 // change for each esp32
-const char* thisTopic = "esp32_1";
-const char* targetTopic = "esp32_2";
+const char* thisTopic = "esp32_2";
+const char* targetTopic = "esp32_1";
 
 // change for other setups
 const char* default_mqtt_host = "h862f16c.ala.us-east-1.emqxsl.com";
 const int default_mqtt_port = 8883;
 const char* default_mqtt_user = "a";
 const char* default_mqtt_pass = "a";
-const char* default_info_topic = "info";
-char default_ssid[32] = "ncsu";
-char default_password[64] = "";
+const char* default_infoTopic = "info";
 
 // default config values
-const int default_check_mqtt_time = 200;             // ms, default 200, time awake to read retained mqtt messages
-const int default_stay_awake_after_command = 60000;  // ms, default 60,000
-const int default_motor_timeout = 3000;              // ms, default 10,000
-const int default_normal_check = 5ULL * 1000000ULL;  // microseconds, default 15,000,000, sleep for this long before waking up to check again
-const int default_max_pwm = 150;                     // out of 255, motor rated for 3 volts but powered by 3.7, default 150
+const int default_check_mqtt_time = 200;              // ms, default 200, time awake to read retained mqtt messages
+const int default_stay_awake_after_command = 120000;  // ms, default 120,000
+const int default_motor_timeout = 10000;              // ms, default 10,000
+const int default_normal_check = 15ULL * 1000000ULL;  // microseconds, default 15,000,000, sleep for this long before waking up to check again
+const int default_max_pwm = 150;                      // out of 255, motor rated for 3 volts but powered by 3.7, default 150
 const int default_strength = 20;
+const int default_brightness = 30;  // percent max brightness
 
-// global RTC persistent/config vars
+//// global RTC persistent
+//config vars
 RTC_DATA_ATTR int check_mqtt_time;
 RTC_DATA_ATTR unsigned long stay_awake_after_command;
 RTC_DATA_ATTR unsigned long motor_timeout;
@@ -43,14 +46,15 @@ RTC_DATA_ATTR int mqtt_port;
 RTC_DATA_ATTR char mqtt_host[128];
 RTC_DATA_ATTR char mqtt_user[64];
 RTC_DATA_ATTR char mqtt_pass[64];
-RTC_DATA_ATTR char info_topic[64];
+RTC_DATA_ATTR char infoTopic[64];
 RTC_DATA_ATTR int strength;
+RTC_DATA_ATTR int brightness;
+
+RTC_DATA_ATTR char default_ssid[32] = "";
+RTC_DATA_ATTR char default_password[64] = "";
+
 RTC_DATA_ATTR bool no_sleep;  // for debugging
 RTC_DATA_ATTR bool firstBoot = true;
-
-
-
-
 
 // global vars
 bool off_switch = false;
@@ -59,15 +63,35 @@ bool clear_message = false;
 bool variables_set = false;
 bool commandReceivedThisBoot = false;
 int lastButtonState = HIGH;
-
 StaticJsonDocument<1024> doc;
-int networkCheckTimeout = 2000;  // timeout in ms
+int networkCheckTimeout = 10000;  // time spent trying to connect to each wifi network
 unsigned long motorStart = 0;
-
 unsigned long lastCommandTime = 0;
 unsigned long mqttConnectTime = 0;
 WiFiClientSecure wifi;
 PubSubClient mqtt(wifi);
+esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+bool useLedAwake = (wakeup_reason == ESP_SLEEP_WAKEUP_GPIO);
+bool otherAwake = false;
+
+// led variables
+int current_r = 0;
+int current_g = 0;
+int current_b = 0;
+
+int both_awake_r = 70;
+int both_awake_g = 70;
+int both_awake_b = 0;
+
+int this_awake_r = 0;
+int this_awake_g = 70;
+int this_awake_b = 0;
+
+unsigned long lastPingSent = 0;
+unsigned long lastPongReceived = 0;
+
+const int pingInterval = 500;
+const int pongTimeout = 2000;  // consider other ESP asleep after 2s
 
 
 // track day for printing voltage
@@ -84,6 +108,28 @@ void initTime() {
   }
 }
 
+
+void set_led(int r, int g, int b) {
+  current_r = r;
+  current_g = g;
+  current_b = b;
+
+  r = min(255, int(r * brightness * 0.01));
+  g = min(255, int(g * brightness * 0.01));
+  b = min(255, int(b * brightness * 0.01));
+
+  analogWrite(RED_PIN, r);
+  analogWrite(GREEN_PIN, g);
+  analogWrite(BLUE_PIN, b);
+}
+
+void led_off() {
+  analogWrite(RED_PIN, 0);
+  analogWrite(GREEN_PIN, 0);
+  analogWrite(BLUE_PIN, 0);
+}
+
+
 void loadString(char* dst, size_t dstSize, JsonDocument& doc, const char* key, const char* def) {
   const char* src = doc[key] | def;
   strncpy(dst, src, dstSize - 1);
@@ -93,7 +139,7 @@ void loadString(char* dst, size_t dstSize, JsonDocument& doc, const char* key, c
 
 
 // create config with default values
-void setup_print_config() {
+void setup_config() {
   if (!LittleFS.begin(true)) {
     Serial.println("LittleFS mount failed");
     return;
@@ -110,8 +156,8 @@ void setup_print_config() {
     // initialize keys
     JsonArray networks = doc.createNestedArray("networks");
     JsonObject defaultNetwork = networks.createNestedObject();
-    defaultNetwork["ssid"] = default_ssid;
-    defaultNetwork["password"] = default_password;
+    defaultNetwork["ssid"] = "ncsu";
+    defaultNetwork["password"] = "";
     doc["check_mqtt_time"] = default_check_mqtt_time;
     doc["stay_awake_after_command"] = default_stay_awake_after_command;
     doc["motor_timeout"] = default_motor_timeout;
@@ -121,8 +167,9 @@ void setup_print_config() {
     doc["mqtt_port"] = default_mqtt_port;
     doc["mqtt_user"] = default_mqtt_user;
     doc["mqtt_pass"] = default_mqtt_pass;
-    doc["info_topic"] = default_info_topic;
+    doc["infoTopic"] = default_infoTopic;
     doc["strength"] = default_strength;
+    doc["brightness"] = default_brightness;
 
     // write to file and close
     serializeJsonPretty(doc, file);
@@ -148,8 +195,9 @@ void setup_print_config() {
 
   // load vars from config to RTC memory
   load_config_vars();
+}
 
-  // print config
+void print_config() {
   Serial.println("networks.json:");
   serializeJsonPretty(doc, Serial);
   Serial.println();
@@ -166,13 +214,14 @@ void load_config_vars() {
   mqtt_port = doc["mqtt_port"];
   loadString(mqtt_user, sizeof(mqtt_user), doc, "mqtt_user", default_mqtt_user);
   loadString(mqtt_pass, sizeof(mqtt_pass), doc, "mqtt_pass", default_mqtt_pass);
-  loadString(info_topic, sizeof(info_topic), doc, "info_topic", default_info_topic);
+  loadString(infoTopic, sizeof(infoTopic), doc, "infoTopic", default_infoTopic);
   loadString(mqtt_host, sizeof(mqtt_host), doc, "mqtt_host", default_mqtt_host);
   strength = doc["strength"];
+  brightness = doc["brightness"];
 }
 
 // send notification to info topic
-void send_info(String message, String topic) {
+void send_mqtt(String message, String topic) {
   message = String(thisTopic) + ": " + message;
   if (mqtt.publish(topic.c_str(), message.c_str())) {
   } else {
@@ -195,7 +244,7 @@ void delete_config() {
     Serial.println("networks.json does not exist");
   }
 
-  setup_print_config();
+  print_config();
 }
 
 
@@ -213,7 +262,7 @@ void add_network(const char* ssid, const char* password) {
   file.close();
 
   Serial.println("Network added: " + String(ssid));
-  setup_print_config();
+  print_config();
 }
 
 void delete_network(const char* ssid) {
@@ -230,7 +279,8 @@ void delete_network(const char* ssid) {
   File file = LittleFS.open("/networks.json", "w");
   serializeJson(doc, file);
   file.close();
-  setup_print_config();
+
+  print_config();
 }
 
 
@@ -337,9 +387,13 @@ void handle_command(String message) {
     return;
   }
 
-  Serial.println("resetting last command time");
-  lastCommandTime = millis();
-  commandReceivedThisBoot = true;
+  bool isPingPong = (message == "ping" || message == "pong");
+
+  if (!isPingPong) {
+    Serial.println("resetting last command time, message: " + message);
+    lastCommandTime = millis();
+    commandReceivedThisBoot = true;
+  }
 
   if (message.startsWith("run") && !run_motor) {
     int val = message.length() > 4 ? message.substring(4).toInt() : strength;
@@ -349,12 +403,14 @@ void handle_command(String message) {
 
     run_motor = true;
     motorStart = millis();
+    set_led(255, 255, 255);
     analogWrite(MOTOR_PIN, motorStrength);
     Serial.println("Motor ON (strength: " + String(val) + "%)");
   }
 
   else if (message.equals("stop")) {
     run_motor = false;
+    led_off();
     motorStart = 0;
     analogWrite(MOTOR_PIN, 0);
     Serial.println("stopping");
@@ -381,11 +437,11 @@ void handle_command(String message) {
     // list of integer keys
     const char* intKeys[] = {
       "strength", "max_pwm", "motor_timeout",
-      "check_mqtt_time", "stay_awake_after_command", "normal_check", nullptr
+      "check_mqtt_time", "stay_awake_after_command", "normal_check", "brightness", nullptr
     };
     // list of string keys
     const char* stringKeys[] = {
-      "mqtt_host", "mqtt_port", "mqtt_user", "mqtt_pass", "info_topic", nullptr
+      "mqtt_host", "mqtt_port", "mqtt_user", "mqtt_pass", "infoTopic", nullptr
     };
     bool handled = false;
 
@@ -412,7 +468,7 @@ void handle_command(String message) {
     if (!handled) {
       Serial.println("Unknown config key: " + key);
     }
-    setup_print_config();
+    print_config();
   }
 
   else if (message.equals("sleep on")) {
@@ -441,7 +497,7 @@ void handle_command(String message) {
   }
 
   else if (message.startsWith("print config")) {
-    setup_print_config();
+    print_config();
   }
 
   else if (message.startsWith("print voltage")) {
@@ -449,7 +505,23 @@ void handle_command(String message) {
   }
 
   else if (message.startsWith("sleep")) {
+    mqtt.publish(targetTopic, "otherasleep");
+
+    // clear retained message or it'll reread and sleep forever
+    mqtt.publish(thisTopic, "", true);
+    delay(100);
+
+    esp_sleep_enable_timer_wakeup(normal_check);
     esp_deep_sleep_start();
+  }
+
+  else if (message.equals("ping")) {
+    mqtt.publish(targetTopic, "pong");
+  }
+
+  else if (message.equals("pong")) {
+    lastPongReceived = millis();
+    otherAwake = true;
   }
 
   else {
@@ -461,8 +533,13 @@ void handle_command(String message) {
 
 
 String connect_wifi() {
-  const int maxRetries = 5;
-  const unsigned long retryDelay = 2000;
+
+  if (useLedAwake) {
+    set_led(255, 0, 0);
+  }
+
+  const int maxRetries = 3;
+  const unsigned long retryDelay = 1000;
   WiFi.mode(WIFI_STA);
   JsonArray networks = doc["networks"].as<JsonArray>();
 
@@ -470,24 +547,24 @@ String connect_wifi() {
 
     // try to connect to last connected network first
     if (strlen(default_ssid) > 0) {
-      Serial.println("connecting to last network: " + String(default_ssid));
+      for (int attempt = 1; attempt <= 2; attempt++) {
+        if (attempt == 1) WiFi.disconnect(true);
+        Serial.println("Connecting to last network, attempt " + String(attempt) + ": " + String(default_ssid));
 
-      WiFi.disconnect(true);
-      delay(100);  // short pause to let driver reset
-      WiFi.begin(default_ssid, default_password);
+        WiFi.begin(default_ssid, default_password);
+        unsigned long startAttempt = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < networkCheckTimeout) {
+          yield();
+        }
 
-      unsigned long startAttempt = millis();
+        if (WiFi.status() == WL_CONNECTED) {
+          Serial.println("WiFi connected to last network in " + String((millis() - startAttempt) / 1000.0) + " seconds");
+          return default_ssid;
+        }
 
-      while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < networkCheckTimeout) {
-        yield();
+        Serial.println("Failed attempt " + String(attempt) + " for last network");
+        delay(retryDelay);
       }
-
-      if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("WiFi connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
-        return default_ssid;
-      }
-
-      Serial.println("Failed to connect to last network");
     }
 
     // try every network in config
@@ -497,27 +574,28 @@ String connect_wifi() {
       Serial.println("trying network in config: " + String(ssid));
 
       WiFi.disconnect(true);
-      delay(100);  // short pause to let driver reset
+      delay(100);
       WiFi.begin(ssid, password);
 
       unsigned long startAttempt = millis();
-      const unsigned long timeout = networkCheckTimeout;
-
       while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < networkCheckTimeout) {
         yield();
       }
 
       if (WiFi.status() == WL_CONNECTED) {
         Serial.println("WiFi connected to: " + String(ssid) + " in " + String((millis() - startAttempt) / 1000.0) + " seconds");
+
         strncpy(default_ssid, ssid, sizeof(default_ssid) - 1);
         default_ssid[sizeof(default_ssid) - 1] = '\0';
         strncpy(default_password, password, sizeof(default_password) - 1);
         default_password[sizeof(default_password) - 1] = '\0';
+
         return ssid;
       }
 
       Serial.println("failed: " + String(ssid));
     }
+
     if (attempt < maxRetries - 1) {
       Serial.println("Retrying WiFi in " + String(retryDelay / 1000) + " seconds...");
       delay(retryDelay);
@@ -530,6 +608,11 @@ String connect_wifi() {
 
 // connect to mqtt
 bool connect_mqtt() {
+
+  // led feedback if button press
+  if (useLedAwake) {
+    set_led(0, 0, 255);
+  }
 
   if (WiFi.status() != WL_CONNECTED) {
     return false;
@@ -544,19 +627,22 @@ bool connect_mqtt() {
   mqtt.setCallback(mqtt_callback);
 
   Serial.println("attempting mqtt connection...");
+  unsigned long startAttempt = millis();
+  const int maxRetries = 2;
   int retries = 0;
 
-  while (!mqtt.connected() && retries < 1) {
-    unsigned long startAttempt = millis();
+  while (!mqtt.connected() && retries < maxRetries) {
 
-    if (mqtt.connect("esp32_1", mqtt_user, mqtt_pass)) {
+    String clientId = String(thisTopic) + String(random(0xffff), HEX);
+    if (mqtt.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
       Serial.println("mqtt connected in " + String((millis() - startAttempt) / 1000.0) + " seconds");
       mqttConnectTime = millis();
       mqtt.subscribe(thisTopic, 1);
       return true;
     }
-    Serial.println("mqtt failed (rc=" + String(mqtt.state()) + ")");
-    delay(1000);
+
+    set_led(0, 0, 255);
+
     retries++;
   }
 
@@ -579,19 +665,45 @@ void read_and_print_voltage() {
   Serial.print("Battery voltage: ");
   Serial.print(batteryVolts, 3);
   Serial.println(" V");
-  send_info(msg, String(info_topic));
+  send_mqtt(msg, String(infoTopic));
 }
+
+
 
 
 // setup
 void setup() {
   Serial.begin(115200);
   Serial.println("-------------------------");
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);  // button
+
+  // motor
   digitalWrite(MOTOR_PIN, LOW);
   pinMode(MOTOR_PIN, OUTPUT);
   analogWrite(MOTOR_PIN, 0);
-  setup_print_config();
+
+  // led
+  pinMode(RED_PIN, OUTPUT);
+  pinMode(GREEN_PIN, OUTPUT);
+  pinMode(BLUE_PIN, OUTPUT);
+
+  if (useLedAwake) {
+    set_led(255, 0, 0);
+  }
+
+
+
+  // wake up from button or timer
+  esp_deep_sleep_enable_gpio_wakeup(1 << BUTTON_GPIO, ESP_GPIO_WAKEUP_GPIO_LOW);
+
+
+  // keep awake if woken by button
+  if (useLedAwake) {
+    Serial.println("Woke up from button press");
+    lastCommandTime = millis();
+    commandReceivedThisBoot = true;
+    set_led(255, 0, 0);
+  }
 
 
   if (!variables_set) {
@@ -599,11 +711,24 @@ void setup() {
     variables_set = true;
   }
 
-  lastCommandTime = 0;
+  if (!useLedAwake) {
+    lastCommandTime = 0;
+  }
+
+  setup_config();
 
   // connect wifi and mqtt
   String ssid = connect_wifi();
   bool mqtt_connected = connect_mqtt();
+  led_off();
+
+  if (useLedAwake) {
+    lastCommandTime = millis();
+  }
+
+  if (mqtt_connected) {
+    mqtt.publish(targetTopic, "otherawake");
+  }
 
   // short window to read serial commands
   unsigned long serialWindow = 50;
@@ -615,9 +740,10 @@ void setup() {
     }
   }
 
-
   if (!mqtt_connected) {
+    mqtt.publish(targetTopic, "otherasleep");
     Serial.println("MQTT connect failed, going to deep sleep");
+    Serial.flush();
     esp_deep_sleep_start();
   }
 
@@ -626,28 +752,29 @@ void setup() {
   if (firstBoot) {
     if (mqtt_connected) {
       read_and_print_voltage();
+
+      struct tm timeinfo;
+      if (getLocalTime(&timeinfo)) {
+        lastReportedDay = timeinfo.tm_mday;
+      }
     }
 
     mqtt.setBufferSize(2048);
     String configMessage;
     serializeJsonPretty(doc, configMessage);
-    send_info(configMessage, String(info_topic));
+    send_mqtt(configMessage, String(infoTopic));
     firstBoot = false;
+  } else {
+    // send voltage to info topic once a day
+    initTime();
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) return;
+    int currentDay = timeinfo.tm_mday;
+    if (lastReportedDay != currentDay) {
+      read_and_print_voltage();
+      lastReportedDay = currentDay;
+    }
   }
-
-  // send voltage to info topic once a day
-  initTime();
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) return;
-  int currentDay = timeinfo.tm_mday;
-  if (lastReportedDay != currentDay) {
-    read_and_print_voltage();
-    lastReportedDay = currentDay;
-  }
-
-  // wake up from button or timer
-  esp_deep_sleep_enable_gpio_wakeup(1 << BUTTON_GPIO, ESP_GPIO_WAKEUP_GPIO_LOW);
-  esp_sleep_enable_timer_wakeup(normal_check);
 }
 
 
@@ -655,15 +782,25 @@ void setup() {
 // loop
 void loop() {
 
-
-
   int buttonState = digitalRead(BUTTON_PIN);
-  if (buttonState == LOW && lastButtonState == HIGH && !run_motor) {
-    mqtt.publish(thisTopic, "run");
+
+  // button pressed
+  if (buttonState == LOW && lastButtonState == HIGH) {
+
+    useLedAwake = true;
+    mqtt.publish(targetTopic, "run");
+    set_led(0, 255, 0);
+    Serial.println("sending run to other esp32");
+    lastCommandTime = millis();
+    commandReceivedThisBoot = true;
   }
   // button released, stop motor
-  if (buttonState == HIGH && lastButtonState == LOW && run_motor) {
-    mqtt.publish(thisTopic, "stop");
+  if (buttonState == HIGH && lastButtonState == LOW) {
+    useLedAwake = true;
+    mqtt.publish(targetTopic, "stop");
+    Serial.println("sending stop to other esp32");
+    lastCommandTime = millis();
+    commandReceivedThisBoot = true;
   }
 
   if (clear_message) {
@@ -671,13 +808,14 @@ void loop() {
     mqtt.publish(thisTopic, "", true);
     clear_message = false;
   }
-  lastButtonState = buttonState;
 
+  lastButtonState = buttonState;
   mqtt.loop();
 
   // motor timeout
   if (run_motor && millis() - motorStart > motor_timeout) {
     run_motor = false;
+    led_off();
     analogWrite(MOTOR_PIN, 0);
     Serial.println("Motor timed out");
   }
@@ -700,7 +838,31 @@ void loop() {
   // sleep if not running motor
   if (!run_motor && !no_sleep && timeSincemqtt > check_mqtt_time && (!commandReceivedThisBoot || timeSinceCommand > stay_awake_after_command)) {
     Serial.println("sleeping for: " + String(normal_check / 1000000.0) + " seconds");
+    mqtt.publish(targetTopic, "otherasleep");
     Serial.flush();
+    esp_sleep_enable_timer_wakeup(normal_check);
     esp_deep_sleep_start();
+  }
+
+  if (millis() - lastPingSent > pingInterval) {
+    lastPingSent = millis();
+    mqtt.publish(targetTopic, "ping");
+  }
+
+  if (millis() - lastPongReceived > pongTimeout) {
+    otherAwake = false;
+  }
+
+  static unsigned long lastLedUpdate = 0;
+  if (millis() - lastLedUpdate > 100) {
+    lastLedUpdate = millis();
+
+    if (!run_motor && buttonState == HIGH && commandReceivedThisBoot && timeSinceCommand < stay_awake_after_command) {
+      if (!otherAwake) {
+        set_led(this_awake_r, this_awake_g, this_awake_b);
+      } else {
+        set_led(both_awake_r, both_awake_g, both_awake_b);
+      }
+    }
   }
 }
