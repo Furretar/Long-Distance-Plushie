@@ -17,6 +17,10 @@ open sendMqtt.py to send commands through mqtt, or send commands in serial monit
 
 `print config` - prints config to the terminal
 
+`print voltage` - prints voltage to the terminal and info topic mqtt
+
+`sleep` - puts device to sleep
+
 you may need to wait to send a command if it's trying to connect to mqtt
 
 # Logic
@@ -75,6 +79,7 @@ after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, a
 [buttons](https://www.amazon.com/dp/B07V55YPP3/?coliid=IDG3NBFSIP9FQ&colid=PV7PKK8FXEMM&psc=0&ref_=list_c_wl_lv_ov_lig_dp_it)
 
 [seeed esp32 c3](https://www.amazon.com/dp/B0DGX3LSC7/?coliid=I2IC5EZRWAHNOI&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
+[info](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/)
 
 [resistors](https://www.amazon.com/dp/B0F4P352BB/?coliid=I1F8ZJCRO5PW9O&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
 
