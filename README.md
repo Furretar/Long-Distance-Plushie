@@ -24,16 +24,16 @@ open sendMqtt.py to send commands through mqtt, or send commands in serial monit
 you may need to wait to send a command if it's trying to connect to mqtt
 
 # Logic
-the esp32 communicates over wifi using mqtt. it has a hardcoded default wifi network. it will automatically try to connect to this one every time it wakes up. you can add networks to the config via the serial terminal or an mqtt command, and it will check those networks if the default one fails after 5 seconds. after connecting to a new network, the default network is changed to the new network. the new default network will persist sleep cycles but not after resets, but the config will always persist. the battery can be recharged by plugging in the device.
+the esp32 communicates over wifi using mqtt. it has a hardcoded default wifi network. it will automatically try to connect to this one every time it wakes up. you can add networks to the config via the serial terminal or an mqtt command, and it will check those networks if the default one fails after 5 seconds. after connecting to a new network, the default network is changed to the new network. the new default network will persist sleep cycles but not after pressing the reset button, but the config will always persist. the battery can be recharged by plugging in the device, and the voltage can be seen in the mqtt info topic. after failing to connect to wifi or mqtt, it will turn off indefinitely, and can be woken up by pressing the button. it's estimated the battery life would last 20 days with 1 hour of active time and 23 hours of normal checks a day. it's also estimated the battery is about to die at 3.3 volts. if there are no networks in the config and it can't connect to the default network, it will need to be connected to a computer with arudino ide to send a command to add a network.
 
 #### the device has 4 modes: active, normal checks, slow checks, and off.
 - after connecting to a network and mqtt, it starts in normal mode and wakes up every 15 seconds to check for commands.
-- after reading a command, it will become active and stay awake for 10 minutes. it can recieve messages instantly in this mode.
-- after 2 days of inactivity, the device enteres slow mode, and only checks every 30 seconds. these values can be changed in the config.
-- after entering the command `off`, the device will go into deep sleep until woken up with the button.
-it's estimated the battery life would last 20 days with 1 hour of active time and 23 hours of normal checks a day. if there are no networks in the config and it can't connect to the default netowrk, it will need to be connected to a computer with arudino ide to send a command to add a network.
+- after reading a command, it will become active and stay awake for 1 minute. it can recieve messages instantly in this mode.
+- after 2 days of inactivity, the device enteres slow mode, and only checks every 30 seconds. (these values can be changed in the config)
+- after sending the command `off`, the device will go into deep sleep until woken up with the button.
 
-the led displays the device's status while it's trying to connect to the mqtt server and can't send any messages. it will blink red while connecting to wifi, and blink blue while connecting to mqtt. after 5 retries of 5 seconds each, the device will go into deep sleep and the led will turn off. pushing the button will make it attempt to connect again.
+
+the led displays the device's status while it's trying to connect to the mqtt server (and can't send any messages). it will blink red while connecting to wifi, and blink blue while connecting to mqtt. after 5 retries of 5 seconds each, the device will go into deep sleep and the led will turn off. pushing the button will make it attempt to connect again.
 
 while connected, the button will trigger the other devices motor with the default strength. the motor is in a plastic case and will click when activated. the led will light up white when triggered. if the button is held for longer than 10 seconds the motor will automatically turn off and wait until the button is re-pressed.
 
