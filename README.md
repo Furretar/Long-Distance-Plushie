@@ -19,6 +19,8 @@ open sendMqtt.py to send commands through mqtt, or send commands in serial monit
 
 `print voltage` - prints voltage to the terminal and info topic mqtt
 
+`sleep` - puts device to sleep
+
 you may need to wait to send a command if it's trying to connect to mqtt
 
 # Logic
