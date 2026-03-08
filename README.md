@@ -54,14 +54,10 @@ after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, a
 
 
 # To-do
-- setup led
-- make 2 topics for communication
 - set up sleep cycles
-- set up check modes, add commands and logic
+- no feedback when pressing button while doing a normal check, either save button press and turn on after check, or allow interrupting normal check
+- print more useful debug info to the info topic, when waking and sleeping
 - design and 3d print housing
-- solder rechargeable lipo battery
-- add variables for normal check frequency, slow checkout timeout, and slow check frequency
-- make button vibrate for length of time being held
 
 
 
