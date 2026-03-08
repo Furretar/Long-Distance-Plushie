@@ -428,7 +428,6 @@ void handle_command(String message) {
 
   else if (message.equals("stop")) {
     run_motor = false;
-    led_off();
     motorStart = 0;
     analogWrite(MOTOR_PIN, 0);
     Serial.println("stopping");
@@ -789,6 +788,8 @@ void setup() {
       read_and_print_voltage();
       lastReportedDay = currentDay;
     }
+新規スケッチ
+
   }
 }
 
@@ -802,7 +803,12 @@ void loop() {
   // button pressed
   if (buttonState == LOW && lastButtonState == HIGH) {
     stayAwake = true;
-    set_led(255, 0, 255);
+    if (otherAwake) {
+      set_led(255, 0, 255);
+    } else {
+      set_led(0, 0, 255);
+    }
+
     lastCommandTime = millis();
     commandReceivedThisBoot = true;
     Serial.println("sending run to other esp32");
