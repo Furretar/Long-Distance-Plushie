@@ -57,6 +57,7 @@ after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, a
 - set up sleep cycles
 - no feedback when pressing button while doing a normal check, either save button press and turn on after check, or allow interrupting normal check
 - print more useful debug info to the info topic, when waking and sleeping
+- add transistor to led so it doesn't glow all the time
 - design and 3d print housing
 
 
