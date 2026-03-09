@@ -10,9 +10,9 @@
 #define MOTOR_PIN D10
 #define BUTTON_PIN D2  // GPIO 4, RTC capable/can wake up from deep sleep
 #define BUTTON_GPIO 4
-#define RED_PIN D9
-#define GREEN_PIN D8
-#define BLUE_PIN D7
+#define RED_PIN D5
+#define GREEN_PIN D4
+#define BLUE_PIN D3
 
 //// configurable default values
 // change for each esp32
@@ -23,7 +23,6 @@ String thisTopic = String("esp32_") + thisNum;
 String targetTopic = String("esp32_") + targetNum;
 String thisPing = String("ping_") + thisNum;
 String targetPing = String("ping_") + targetNum;
-
 
 // change for other setups
 const char* default_mqtt_host = "h862f16c.ala.us-east-1.emqxsl.com";
@@ -39,8 +38,8 @@ const int default_motor_timeout = 10000;              // ms, default 10,000
 const int default_normal_check = 15ULL * 1000000ULL;  // microseconds, default 15,000,000, sleep for this long before waking up to check again
 const int default_slow_check = 30ULL * 1000000ULL;    // microseconds, default 30,000,000
 const int default_max_pwm = 150;                      // out of 255, motor rated for 3 volts but powered by 3.7, default 150
-const int default_strength = 20;
-const int default_brightness = 20;  // percent max brightness
+const int default_brightness = 20;                    // percent max brightness
+const int default_strength = 20;                      // percent of max motor strength, default 20
 
 //// global RTC persistent
 //config vars
@@ -57,10 +56,8 @@ RTC_DATA_ATTR char mqtt_pass[64];
 RTC_DATA_ATTR char infoTopic[64];
 RTC_DATA_ATTR int strength;
 RTC_DATA_ATTR int brightness;
-
 RTC_DATA_ATTR char default_ssid[32] = "";
 RTC_DATA_ATTR char default_password[64] = "";
-
 RTC_DATA_ATTR bool firstBoot = true;
 RTC_DATA_ATTR bool debugMqttFailed = false;
 
@@ -80,30 +77,28 @@ unsigned long mqttConnectTime = 0;
 WiFiClientSecure wifi;
 PubSubClient mqtt(wifi);
 esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-bool stayAwake = (wakeup_reason == ESP_SLEEP_WAKEUP_GPIO);
+volatile bool stayAwake = (wakeup_reason == ESP_SLEEP_WAKEUP_GPIO);
 bool otherAwake = false;
 
 // led variables
 int current_r = 0;
 int current_g = 0;
 int current_b = 0;
-
 int both_awake_r = 70;
 int both_awake_g = 70;
 int both_awake_b = 0;
-
 int this_awake_r = 0;
 int this_awake_g = 70;
 int this_awake_b = 0;
 
+// sync variable
 unsigned long lastPingSent = 0;
 unsigned long lastPongReceived = 0;
-
 const int pingInterval = 500;
 const int pongTimeout = 2000;  // consider other ESP asleep after 2s
 
 
-// track day for printing voltage
+// track date for printing voltage
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = -5 * 3600;  // adjust timezone
 RTC_DATA_ATTR int lastReportedDay = -1;
@@ -115,6 +110,22 @@ void initTime() {
     Serial.println("Failed to obtain time");
     return;
   }
+}
+
+// lock pins when sleeping so leaking current doesn't cause led to glow
+void goToSleep() {
+  // force pin LOW so LED is off
+  digitalWrite(RED_PIN, LOW);
+  digitalWrite(GREEN_PIN, LOW);
+  digitalWrite(BLUE_PIN, LOW);
+
+  // lock the pin state
+  gpio_hold_en((gpio_num_t)RED_PIN);
+  gpio_hold_en((gpio_num_t)GREEN_PIN);
+  gpio_hold_en((gpio_num_t)BLUE_PIN);
+
+  gpio_deep_sleep_hold_en();  // keep hold during deep sleep
+  esp_deep_sleep_start();     // enter deep sleep
 }
 
 
@@ -519,7 +530,7 @@ void handle_command(String message) {
     delay(100);
 
     esp_sleep_enable_timer_wakeup(normal_check);
-    esp_deep_sleep_start();
+    goToSleep();
   }
 
   else if (message.equals("ping")) {
@@ -678,14 +689,25 @@ void read_and_print_voltage() {
   send_mqtt(String(infoTopic), msg);
 }
 
-
-
+// interrupt wifi and mqtt connection for led feedback
+String ssid = "";
+bool mqtt_connected = false;
+void IRAM_ATTR buttonISR() {
+  if (!stayAwake) {
+    stayAwake = true;
+    if (ssid.length() == 0) {
+      set_led(255, 0, 0);
+    } else {
+      set_led(0, 0, 255);
+    }
+  }
+}
 
 // setup
 void setup() {
   Serial.begin(115200);
   Serial.println("-------------------------");
-  pinMode(BUTTON_PIN, INPUT_PULLUP);  // button
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   // motor
   digitalWrite(MOTOR_PIN, LOW);
@@ -697,15 +719,20 @@ void setup() {
   pinMode(GREEN_PIN, OUTPUT);
   pinMode(BLUE_PIN, OUTPUT);
 
+  // release hold on leds
+  gpio_hold_dis((gpio_num_t)RED_PIN);
+  gpio_hold_dis((gpio_num_t)GREEN_PIN);
+  gpio_hold_dis((gpio_num_t)BLUE_PIN);
+
+  // interrupt wifi and mqtt connection for led feedback
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, FALLING);
+
   if (stayAwake) {
     set_led(255, 0, 0);
   }
 
-
-
   // wake up from button or timer
   esp_deep_sleep_enable_gpio_wakeup(1 << BUTTON_GPIO, ESP_GPIO_WAKEUP_GPIO_LOW);
-
 
   // keep awake if woken by button
   if (stayAwake) {
@@ -714,7 +741,6 @@ void setup() {
     commandReceivedThisBoot = true;
     set_led(255, 0, 0);
   }
-
 
   if (!variables_set) {
     variables_set = true;
@@ -727,8 +753,8 @@ void setup() {
   setup_config();
 
   // connect wifi and mqtt
-  String ssid = connect_wifi();
-  bool mqtt_connected = connect_mqtt();
+  ssid = connect_wifi();
+  mqtt_connected = connect_mqtt();
   lastPongReceived = millis();
   led_off();
 
@@ -752,7 +778,7 @@ void setup() {
     Serial.println("MQTT connect failed, going to deep sleep");
     Serial.flush();
     esp_sleep_enable_timer_wakeup(slow_check * 2);
-    esp_deep_sleep_start();
+    goToSleep();
   }
 
   // send debug message to show that mqtt failed
@@ -760,7 +786,6 @@ void setup() {
     debugMqttFailed = false;
     mqtt.publish(infoTopic, "mqtt failed");
   }
-
 
   // send config to info topic
   if (firstBoot) {
@@ -788,8 +813,6 @@ void setup() {
       read_and_print_voltage();
       lastReportedDay = currentDay;
     }
-新規スケッチ
-
   }
 }
 
@@ -862,10 +885,10 @@ void loop() {
   // sleep if not running motor
   if (!run_motor && timeSincemqtt > check_mqtt_time && (!stayAwake || timeSinceCommand > stay_awake_after_command)) {
     Serial.println("sleeping for: " + String(normal_check / 1000000.0) + " seconds");
-    send_mqtt(infoTopic, "sleep");
+    send_mqtt(thisPing, "sleep");
     Serial.flush();
     esp_sleep_enable_timer_wakeup(normal_check);
-    esp_deep_sleep_start();
+    goToSleep();
   }
 
   if (stayAwake && millis() - lastPingSent > pingInterval) {
