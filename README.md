@@ -1,5 +1,5 @@
 # Commands
-open sendMqtt.py to send commands through mqtt, or send commands in serial monitor in arudino ide
+open the IoT MQTT Panel app or sendMqtt.py to send commands through mqtt, or send commands in serial monitor in arudino ide
 
 `run` - toggles the motor on
 
