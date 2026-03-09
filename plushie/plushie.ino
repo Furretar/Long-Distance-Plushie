@@ -8,16 +8,15 @@
 
 #define BATTERY_PIN D0
 #define MOTOR_PIN D10
-#define BUTTON_PIN D2  // GPIO 4, RTC capable/can wake up from deep sleep
-#define BUTTON_GPIO 4
+#define BUTTON_PIN D1  // GPIO 4, RTC capable/can wake up from deep sleep
 #define RED_PIN D5
 #define GREEN_PIN D4
 #define BLUE_PIN D3
 
 //// configurable default values
 // change for each esp32
-const char* thisNum = "2";
-const char* targetNum = "1";
+const char* thisNum = "1";
+const char* targetNum = "2";
 
 String thisTopic = String("esp32_") + thisNum;
 String targetTopic = String("esp32_") + targetNum;
@@ -79,6 +78,8 @@ PubSubClient mqtt(wifi);
 esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
 volatile bool stayAwake = (wakeup_reason == ESP_SLEEP_WAKEUP_GPIO);
 bool otherAwake = false;
+bool mqtt_connected = false;
+
 
 // led variables
 int current_r = 0;
@@ -222,6 +223,13 @@ void print_config() {
   Serial.println("networks.json:");
   serializeJsonPretty(doc, Serial);
   Serial.println();
+
+  if (mqtt_connected) {
+    mqtt.setBufferSize(2048);
+    String configMessage;
+    serializeJsonPretty(doc, configMessage);
+    send_mqtt(String(infoTopic), configMessage);
+  }
 }
 
 
@@ -691,7 +699,6 @@ void read_and_print_voltage() {
 
 // interrupt wifi and mqtt connection for led feedback
 String ssid = "";
-bool mqtt_connected = false;
 void IRAM_ATTR buttonISR() {
   if (!stayAwake) {
     stayAwake = true;
@@ -732,7 +739,7 @@ void setup() {
   }
 
   // wake up from button or timer
-  esp_deep_sleep_enable_gpio_wakeup(1 << BUTTON_GPIO, ESP_GPIO_WAKEUP_GPIO_LOW);
+  esp_deep_sleep_enable_gpio_wakeup(1ULL << BUTTON_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
 
   // keep awake if woken by button
   if (stayAwake) {
@@ -787,21 +794,15 @@ void setup() {
     mqtt.publish(infoTopic, "mqtt failed");
   }
 
-  // send config to info topic
+  // send voltage to info topic
   if (firstBoot) {
     if (mqtt_connected) {
       read_and_print_voltage();
-
       struct tm timeinfo;
       if (getLocalTime(&timeinfo)) {
         lastReportedDay = timeinfo.tm_mday;
       }
     }
-
-    mqtt.setBufferSize(2048);
-    String configMessage;
-    serializeJsonPretty(doc, configMessage);
-    send_mqtt(String(infoTopic), configMessage);
     firstBoot = false;
   } else {
     // send voltage to info topic once a day
