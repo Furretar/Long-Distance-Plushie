@@ -53,6 +53,7 @@ commands can be sent to the device through the `Iot MQTT Panel` app. you can als
   
 after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, and `info`. add a text input and output for esp32_1 and esp32_2, and a text output for info. 
 
+# Wiring
 ![Circuit Diagram](circuit.svg)
 
 
