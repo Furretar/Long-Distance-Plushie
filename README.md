@@ -53,6 +53,8 @@ commands can be sent to the device through the `Iot MQTT Panel` app. you can als
   
 after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, and `info`. add a text input and output for esp32_1 and esp32_2, and a text output for info. 
 
+![Circuit Diagram](circuit.svg)
+
 
 # Construction Notes
 - the LED can't use pins D9 (GPIO21) or D7 (GPIO20) because they can't be turned off while asleep, and will cause the LED to dimly glow. [info about the esp32 xiao c3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/)
