@@ -3,23 +3,25 @@ open sendMqtt.py to send commands through mqtt, or send commands in serial monit
 
 `run` - toggles the motor on
 
-`run [100]` - toggles the motor with strength 100
+`run 100` - toggles the motor with 100% strength
 
 `stop` - toggles the motor off
+
+`print config` - prints config to the terminal
 
 `config [key] [value]`, example: `config strength 100` - changes value of the entry in the config
 
 `delete config` - deletes the config and recreates it with default values
 
-`delete network [ssid]` - deletes the wifi network entry with the listed name/ssid
-
 `add network [name] [password]` - adds a network with the name/ssid and password
 
-`print config` - prints config to the terminal
+`delete network [ssid]` - deletes the wifi network entry with the listed name/ssid
 
 `print voltage` - prints voltage to the terminal and info topic mqtt
 
-`sleep` - puts device to sleep
+`sleep` - puts device to sleep, will wake up after normal check time
+
+`off` - puts device to sleep, can only be woken with the button WIP
 
 you may need to wait to send a command if it's trying to connect to mqtt
 
