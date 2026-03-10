@@ -23,6 +23,8 @@ open the IoT MQTT Panel app or sendMqtt.py to send commands through mqtt, or sen
 
 `off` - puts device to sleep, can only be woken with the button WIP
 
+`var all` - prints the value of global variables, for debugging
+
 you may need to wait to send a command if it's trying to connect to mqtt
 
 # Logic
