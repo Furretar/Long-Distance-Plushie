@@ -66,7 +66,8 @@ after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, a
 <img width="1280" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/5e99803d-1edf-4d50-96f7-1c4f161531d0" />
 
 # To-do
-- set up sleep cycles
+- check if off command works
+- make sure efficiently connects when there are many wifi networks in config
 - print more useful debug info to the info topic, when waking and sleeping
 - design and 3d print housing
 
