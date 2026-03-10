@@ -73,7 +73,7 @@ after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, a
 
 - print more useful debug info to the info topic, when waking and sleeping
 - design and 3d print housing
-- what if wifi goes out at home? 
+- what if wifi goes out at home? once connected, ping first before going to mqtt
 
 
 
