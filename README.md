@@ -68,6 +68,7 @@ after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, a
 # To-do
 - check if off command works
 - make sure efficiently connects when there are many wifi networks in config
+- move to front heuristic for wifi networks
 - print more useful debug info to the info topic, when waking and sleeping
 - design and 3d print housing
 
