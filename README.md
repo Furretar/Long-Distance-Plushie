@@ -55,15 +55,25 @@ commands can be sent to the device through the `Iot MQTT Panel` app. you can als
   
 after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, and `info`. add a text input and output for esp32_1 and esp32_2, and a text output for info. 
 
-# Wiring
+# Wiring Pictures
 ![Circuit Diagram](circuit.svg)
+
+Unfortunately I made 2 mistakes in my soldering in these examples. You should refer to the fritzing model instead. The blue and purple wires are unnecessary, you only need 1 pair of jumper cables attached to the BAT+/BAT- pads on the esp32. The header pins are also crooked on my esp32 in this example. 
+
+<img width="400" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/ed8fd8ea-12ad-4899-ae36-09d5d4f9c9b4"/>
+
+<img width="400" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/8f26631d-1f1d-4b6b-a5d9-500dfcabebe7"/>
+
+<img width="400" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/3e32d2d4-13f6-41ec-824c-f45d8f219552"/>
+
+<img width="400" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/d7508b9b-2972-48a8-88b3-d4f05ac23411"/>
+
 
 
 # Construction Notes
-- the LED can't use pins D9 (GPIO21) or D7 (GPIO20) because they can't be turned off while asleep, and will cause the LED to dimly glow. [info about the esp32 xiao c3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/)
-- there is electrical tape on the LED to prevent the pins from touching
-- esp32 battery wires should all be lead out of the back away from the usb port. there should be 3 pairs of wires, one pair connected to the battery holder, one pair of jumper cables to power the board, and a pair of 220k resistors attached to A0/D0
-- the inside of the housing is covered in heat resistant polymide tape in case the batteries discharge. there are also holes in the housing and tape to allow heat to escape if needed.
+- The LED can't use pins D9 (GPIO21) or D7 (GPIO20) because they can't be turned off while asleep, and will cause the LED to dimly glow. [info about the esp32 xiao c3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/)
+- There is tape on the LED to prevent the pins from touching. This isn't strictly necessary, and anything to stop the pins from touching will work. 
+- Esp32 battery wires should all be lead out of the back, away from the usb port. there should be 2 pairs of wires on the BAT-/BAT+ pads, 1 pair connected to the battery holder, and 1 pair of jumper cables to power the board. (If you solder another pair of 220k resistors on the pads, you don't need to attach the 220k resistors as shown in the picture [as described here](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/#check-the-battery-voltage).)
   
 <img width="1280" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/5e99803d-1edf-4d50-96f7-1c4f161531d0" />
 
