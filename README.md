@@ -79,12 +79,8 @@ Unfortunately I made 2 mistakes in my soldering in these examples. You should re
 
 # To-do
 - check if off command works
-- make sure efficiently connects when there are many wifi networks in config
-- move to front heuristic for wifi networks
-- after failing to connect, only try to connect to scanned networks that are also listed in config
 
 - print more useful debug info to the info topic, when waking and sleeping
-- design and 3d print housing
 - what if wifi goes out at home? once connected, ping first before going to mqtt
 
 
