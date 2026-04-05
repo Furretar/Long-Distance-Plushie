@@ -1,29 +1,29 @@
 
 
 # Overview
-The esp32 communicates over wifi using mqtt. It has a hardcoded default wifi network. It will automatically try to connect to this when it first starts up. You can add networks to the config via the serial terminal or an mqtt command, and it will check those networks if the default one fails after 5 seconds. After connecting to a new network, the default network is changed to the new network. The new default network will persist sleep cycles but not after pressing the reset button, but the config will always persist. The battery can be recharged by plugging in the device, and the voltage can be seen in the mqtt info topic. 
+The ESP32 communicates over WiFi using MQTT. It has a hardcoded default WiFi network. It will automatically try to connect to this when it first starts up. You can add networks to the config via the serial terminal or an MQTT command, and it will check those networks if the default one fails after 5 seconds. After connecting to a new network, the default network is changed to the new network. The new default network will persist sleep cycles but not after pressing the reset button, but the config will always persist. The battery can be recharged by plugging in the device, and the voltage can be seen in the MQTT info topic. 
 
 Confirm these vvvv
 
-After failing to connect to wifi or mqtt, it will turn off indefinitely, and can be woken up by pressing the button*. 
+After failing to connect to WiFi or MQTT, it will turn off indefinitely, and can be woken up by pressing the button*. 
 
 It's estimated the battery life would last 20 days with 1 hour of active time and 23 hours of normal checks a day. it's also estimated the battery is about to die at 3.3 volts.
 
 If there are no networks in the config and the device can't connect to the default network, it will need to be connected to a computer with [Arudino IDE](https://www.arduino.cc/en/software/) to send a command to add a network.
 
 #### The device has 4 modes: active, normal checks, slow checks, and off.
-- After connecting to a network and mqtt, it starts in normal mode and wakes up every 15 seconds to check for commands.
+- After connecting to a network and MQTT, it starts in normal mode and wakes up every 15 seconds to check for commands.
 - After reading a command, it will become active and stay awake for 2 minutes. It can recieve messages instantly in this mode.
 - After 2 days of inactivity, the device enteres slow mode, and only checks every 30 seconds. (these values can be changed in the config)
 - After sending the command `off`, the device will go into deep sleep until woken up with the button.
 
-The LED displays the device's status while it's trying to connect to the mqtt server (and can't send any messages). It will blink red while connecting to wifi, and blink blue while connecting to mqtt. 
+The LED displays the device's status while it's trying to connect to the MQTT server (and can't send any messages). It will blink red while connecting to WiFi, and blink blue while connecting to MQTT. 
 
 check vvvvvvv
 
-After 5 retries of 5 seconds each, the device will go into deep sleep and the led will turn off. Pushing the button will make it attempt to connect again.
+After 5 retries of 5 seconds each, the device will go into deep sleep and the LED will turn off. Pushing the button will make it attempt to connect again.
 
-While connected, the button will trigger the other devices motor with the default strength. The motor is in a plastic case and will click when activated. The led will light up white when triggered. If the button is held for longer than 10 seconds the motor will automatically turn off and wait until the button is re-pressed.
+While connected, the button will trigger the other devices motor with the default strength. The motor is in a plastic case and will click when activated. The LED will light up white when triggered. If the button is held for longer than 10 seconds the motor will automatically turn off and wait until the button is re-pressed.
 
 Commands can be sent to the device through the `Iot MQTT Panel` app. You can also see the status of each device, and they will display messages about their mode, when they vibrate, and estimated battery life left. 
 
@@ -36,10 +36,10 @@ Commands can be sent to the device through the `Iot MQTT Panel` app. You can als
 - and in additional options, a username: `a`
 - and a password: `a`
   
-After connecting, add 5 panels. The available topics are `esp32_1`, `esp32_2`, and `info`. add a text input and output for esp32_1 and esp32_2, and a text output for info. 
+After connecting, add 5 panels. The available topics are `ESP32_1`, `ESP32_2`, and `info`. add a text input and output for ESP32_1 and ESP32_2, and a text output for info. 
 
 # Commands
-open the IoT MQTT Panel app or sendMqtt.py to send commands through mqtt, or send commands in serial monitor in arudino ide
+open the IoT MQTT Panel app or sendMQTT.py to send commands through MQTT, or send commands in serial monitor in arudino ide
 
 `run` - toggles the motor on
 
@@ -55,9 +55,9 @@ open the IoT MQTT Panel app or sendMqtt.py to send commands through mqtt, or sen
 
 `add network [name] [password]` - adds a network with the name/ssid and password
 
-`delete network [ssid]` - deletes the wifi network entry with the listed name/ssid
+`delete network [ssid]` - deletes the WiFi network entry with the listed name/ssid
 
-`print voltage` - prints voltage to the terminal and info topic mqtt
+`print voltage` - prints voltage to the terminal and info topic MQTT
 
 `sleep` - puts device to sleep, will wake up after normal check time
 
@@ -65,33 +65,22 @@ open the IoT MQTT Panel app or sendMqtt.py to send commands through mqtt, or sen
 
 `var all` - prints the value of global variables, for debugging
 
-you may need to wait to send a command if it's trying to connect to mqtt
+you may need to wait to send a command if it's trying to connect to MQTT
 
 # MQTT Broker Setup
-If you don't want self host your MQTT broker, I recommend the service [EMQX](https://www.emqx.com/en/mqtt/public-mqtt5-broker). The free tier allows 1,000 devices to be connected, with 1,000,000 active minutes and 1 GB of data per month. This should be way more than enough for this project. Just make an account, make a project, set a username and password in `Access Control->Authorization`, and you can access the MQTT host in `Deployment Overview`. 
-
-# (Optional) MQTT Bridge
-On some public wifi networks, the host `emqxsl.com` is blocked, and you will not be able to send any mqtt messages over the network. This is the case on my university's campus wifi. You can bypass this by hosting a web service that receives the commands and sends them to EMQX. To do this,  I recommend the service [Render.com](https://render.com/). 
-- Clone this github repository
-- Go to `Projects`
-- `Deploy A Web Service`
-- Select this repository
-- Set `Language` to `Node`
-- Set `Root Directory` as `\optional mqtt bridge`
-- Set `Build Command` to `npm install`
-- Set `Start Command` to `npm start`
+If you don't want self host your MQTT broker, I recommend the service [EMQX](https://www.emqx.com/en/MQTT/public-MQTT5-broker). The free tier allows 1,000 devices to be connected, with 1,000,000 active minutes and 1 GB of data per month. This should be way more than enough for this project. Just make an account, make a project, set a username and password in `Access Control->Authorization`, and you can access the MQTT host in `Deployment Overview`. 
 
 # Construction Notes
-- The LED can't use pins D9 (GPIO21) or D7 (GPIO20) because they can't be turned off while asleep, and will cause the LED to dimly glow. [info about the esp32 xiao c3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/)
+- The LED can't use pins D9 (GPIO21) or D7 (GPIO20) because they can't be turned off while asleep, and will cause the LED to dimly glow. [info about the ESP32 xiao c3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/)
 - There is tape on the LED to prevent the pins from touching. This isn't strictly necessary, and anything to stop the pins from touching will work. 
-- Esp32 battery wires should all be lead out of the back, away from the usb port. there should be 2 pairs of wires on the BAT-/BAT+ pads, 1 pair connected to the battery holder, and 1 pair of jumper cables to power the board. (If you solder another pair of 220k resistors on the pads, you don't need to attach the 220k resistors as shown in the picture [as described here](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/#check-the-battery-voltage).)
+- ESP32 battery wires should all be lead out of the back, away from the usb port. there should be 2 pairs of wires on the BAT-/BAT+ pads, 1 pair connected to the battery holder, and 1 pair of jumper cables to power the board. (If you solder another pair of 220k resistors on the pads, you don't need to attach the 220k resistors as shown in the picture [as described here](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/#check-the-battery-voltage).)
   
 <img width="1280" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/5e99803d-1edf-4d50-96f7-1c4f161531d0" />
 
 # Wiring Pictures
 ![Circuit Diagram](circuit.svg)
 
-Unfortunately I made 2 mistakes in my soldering in these examples. You should refer to the fritzing model instead. The blue and purple wires are unnecessary, you only need 1 pair of jumper cables attached to the BAT+/BAT- pads on the esp32. The header pins are also crooked on my esp32 in this example. 
+Unfortunately I made 2 mistakes in my soldering in these examples. You should refer to the fritzing model instead. The blue and purple wires are unnecessary, you only need 1 pair of jumper cables attached to the BAT+/BAT- pads on the ESP32. The header pins are also crooked on my ESP32 in this example. 
 
 <img width="400" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/ed8fd8ea-12ad-4899-ae36-09d5d4f9c9b4"/>
 
@@ -105,12 +94,12 @@ Unfortunately I made 2 mistakes in my soldering in these examples. You should re
 # To-do
 - check if off command works
 - print more useful debug info to the info topic, when waking and sleeping
-- what if wifi goes out at home? once connected, ping first before going to mqtt
+- what if WiFi goes out at home? once connected, ping first before going to MQTT
 
 
 
 # Item list
-[seeed esp32 xiao c3](https://www.amazon.com/dp/B0DGX3LSC7/?coliid=I2IC5EZRWAHNOI&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
+[seeed ESP32 xiao c3](https://www.amazon.com/dp/B0DGX3LSC7/?coliid=I2IC5EZRWAHNOI&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
 
 [8000-16000RPM Motor](https://www.amazon.com/dp/B07KYLZC1S/?coliid=I126MR9PDJDCQ6&colid=PV7PKK8FXEMM&psc=0&ref_=list_c_wl_lv_ov_lig_dp_it)
 
@@ -135,4 +124,28 @@ Unfortunately I made 2 mistakes in my soldering in these examples. You should re
 [resistors](https://www.amazon.com/dp/B0F4P352BB/?coliid=I1F8ZJCRO5PW9O&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
 
 [header pins](https://www.amazon.com/dp/B07PKKY8BX/?coliid=INKQMG3MK3TDR&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
+
+# (WIP) Handling Blocked Public Networks
+This is an overview to remind myself, this solution is not implemented in the code yet. On some public WiFi networks, the host `emqxsl.com` is blocked, and you will not be able to send any MQTT messages over the network. This is the case on my university's campus WiFi. You can bypass this by hosting a web service that receives the commands and sends them to EMQX. To do this,  I recommend the service [Render.com](https://render.com/). 
+- Clone this github repository
+- Go to `Projects`
+- `Deploy A Web Service`
+- Select this repository
+- Set `Language` to `Node`
+- Set `Root Directory` as `./Optional-MQTT-Bridge`
+- Set `Build Command` to `npm install`
+- Set `Start Command` to `npm start`
+
+You can now use the web service link `https://example.onrender.com`  to send messages to your MQTT broker. You can send messages using the ESP32 like this:
+```
+http.begin(client, "https://example.onrender.com/publish");
+http.addHeader("Content-Type", "application/json");
+http.POST("{\"topic\":\"example_topic\",\"message\":\"hello\"}");
+```
+
+Or the command line like this:
+
+`curl -X POST https://long-distance-plushie.onrender.com/publish -H "Content-Type: application/json" -d '{"topic": "example_topic", "message": "hello"}'`
+
+However, there's also a login capture page when sending requests over HTTPS on my university's network. I don't know of a way to navigate the login portal on the ESP32, so one way to bypass this is MAC address spoofing. You can change your computer's MAC address, authenticate the WiFi network, set your ESP32's MAC address to match, then change your computer's MAC address back. There can't be 2 devices with the same MAC address on the same network. I could add a flag to the code to switch to always using the bridge, as well as a variable to store a MAC address. I don't plan on implementing this currently and will test out using a hotspot instead.
 
