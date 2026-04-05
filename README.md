@@ -27,7 +27,7 @@ While connected, the button will trigger the other devices motor with the defaul
 
 Commands can be sent to the device through the `Iot MQTT Panel` app. You can also see the status of each device, and they will display messages about their mode, when they vibrate, and estimated battery life left. 
 
-# connecting to MQTT:
+# Connecting to MQTT:
 - the dashboard settings require a name (anything)
 - an ID (anything)
 - a broker address: `lc600a99.ala.us-east-1.emqxsl.com`
@@ -39,7 +39,7 @@ Commands can be sent to the device through the `Iot MQTT Panel` app. You can als
 After connecting, add 5 panels. The available topics are `ESP32_1`, `ESP32_2`, and `info`. add a text input and output for ESP32_1 and ESP32_2, and a text output for info. 
 
 # Commands
-open the IoT MQTT Panel app or sendMQTT.py to send commands through MQTT, or send commands in serial monitor in arudino ide
+open the IoT MQTT Panel app on iOS or android to send commands through MQTT, or send commands in serial monitor in Arudino IDE
 
 `run` - toggles the motor on
 
@@ -65,12 +65,13 @@ open the IoT MQTT Panel app or sendMQTT.py to send commands through MQTT, or sen
 
 `var all` - prints the value of global variables, for debugging
 
-you may need to wait to send a command if it's trying to connect to MQTT
+You may need to wait to send a command if the device is trying to connect to MQTT.
 
 # MQTT Broker Setup
 If you don't want self host your MQTT broker, I recommend the service [EMQX](https://www.emqx.com/en/MQTT/public-MQTT5-broker). The free tier allows 1,000 devices to be connected, with 1,000,000 active minutes and 1 GB of data per month. This should be way more than enough for this project. Just make an account, make a project, set a username and password in `Access Control->Authorization`, and you can access the MQTT host in `Deployment Overview`. 
 
 # Construction Notes
+- To build this project, you can reference the item list below and `LDP-Wiring.svg` file in this repository. There is also a 3D model file `LDP-housing-model.stl` that can be printed to house the project once constructed.
 - The LED can't use pins D9 (GPIO21) or D7 (GPIO20) because they can't be turned off while asleep, and will cause the LED to dimly glow. [info about the ESP32 xiao c3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/)
 - There is tape on the LED to prevent the pins from touching. This isn't strictly necessary, and anything to stop the pins from touching will work. 
 - ESP32 battery wires should all be lead out of the back, away from the usb port. there should be 2 pairs of wires on the BAT-/BAT+ pads, 1 pair connected to the battery holder, and 1 pair of jumper cables to power the board. (If you solder another pair of 220k resistors on the pads, you don't need to attach the 220k resistors as shown in the picture [as described here](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/#check-the-battery-voltage).)
@@ -93,7 +94,10 @@ Unfortunately I made 2 mistakes in my soldering in these examples. You should re
 
 # To-do
 - check if off command works
-- print more useful debug info to the info topic, when waking and sleeping
+- update network logic in this readme
+- add finished housing picture
+- upload finished 3d model
+- edit code so it doesnt contain my netowrks and host etc
 - what if WiFi goes out at home? once connected, ping first before going to MQTT
 
 
