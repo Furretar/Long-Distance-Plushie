@@ -1,3 +1,43 @@
+
+
+# Overview
+The esp32 communicates over wifi using mqtt. It has a hardcoded default wifi network. It will automatically try to connect to this when it first starts up. You can add networks to the config via the serial terminal or an mqtt command, and it will check those networks if the default one fails after 5 seconds. After connecting to a new network, the default network is changed to the new network. The new default network will persist sleep cycles but not after pressing the reset button, but the config will always persist. The battery can be recharged by plugging in the device, and the voltage can be seen in the mqtt info topic. 
+
+Confirm these vvvv
+
+After failing to connect to wifi or mqtt, it will turn off indefinitely, and can be woken up by pressing the button*. 
+
+It's estimated the battery life would last 20 days with 1 hour of active time and 23 hours of normal checks a day. it's also estimated the battery is about to die at 3.3 volts.
+
+If there are no networks in the config and the device can't connect to the default network, it will need to be connected to a computer with [Arudino IDE](https://www.arduino.cc/en/software/) to send a command to add a network.
+
+#### The device has 4 modes: active, normal checks, slow checks, and off.
+- After connecting to a network and mqtt, it starts in normal mode and wakes up every 15 seconds to check for commands.
+- After reading a command, it will become active and stay awake for 2 minutes. It can recieve messages instantly in this mode.
+- After 2 days of inactivity, the device enteres slow mode, and only checks every 30 seconds. (these values can be changed in the config)
+- After sending the command `off`, the device will go into deep sleep until woken up with the button.
+
+The LED displays the device's status while it's trying to connect to the mqtt server (and can't send any messages). It will blink red while connecting to wifi, and blink blue while connecting to mqtt. 
+
+check vvvvvvv
+
+After 5 retries of 5 seconds each, the device will go into deep sleep and the led will turn off. Pushing the button will make it attempt to connect again.
+
+While connected, the button will trigger the other devices motor with the default strength. The motor is in a plastic case and will click when activated. The led will light up white when triggered. If the button is held for longer than 10 seconds the motor will automatically turn off and wait until the button is re-pressed.
+
+Commands can be sent to the device through the `Iot MQTT Panel` app. You can also see the status of each device, and they will display messages about their mode, when they vibrate, and estimated battery life left. 
+
+# connecting to MQTT:
+- the dashboard settings require a name (anything)
+- an ID (anything)
+- a broker address: `lc600a99.ala.us-east-1.emqxsl.com`
+- a port: `8883`
+- network protocol: TCP-SSL
+- and in additional options, a username: `a`
+- and a password: `a`
+  
+After connecting, add 5 panels. The available topics are `esp32_1`, `esp32_2`, and `info`. add a text input and output for esp32_1 and esp32_2, and a text output for info. 
+
 # Commands
 open the IoT MQTT Panel app or sendMqtt.py to send commands through mqtt, or send commands in serial monitor in arudino ide
 
@@ -27,33 +67,26 @@ open the IoT MQTT Panel app or sendMqtt.py to send commands through mqtt, or sen
 
 you may need to wait to send a command if it's trying to connect to mqtt
 
-# Logic
-the esp32 communicates over wifi using mqtt. it has a hardcoded default wifi network. it will automatically try to connect to this one every time it wakes up. you can add networks to the config via the serial terminal or an mqtt command, and it will check those networks if the default one fails after 5 seconds. after connecting to a new network, the default network is changed to the new network. the new default network will persist sleep cycles but not after pressing the reset button, but the config will always persist. the battery can be recharged by plugging in the device, and the voltage can be seen in the mqtt info topic. after failing to connect to wifi or mqtt, it will turn off indefinitely, and can be woken up by pressing the button. it's estimated the battery life would last 20 days with 1 hour of active time and 23 hours of normal checks a day. it's also estimated the battery is about to die at 3.3 volts. if there are no networks in the config and it can't connect to the default network, it will need to be connected to a computer with arudino ide to send a command to add a network.
+# MQTT Broker Setup
+If you don't want self host your MQTT broker, I recommend the service [EMQX](https://www.emqx.com/en/mqtt/public-mqtt5-broker). The free tier allows 1,000 devices to be connected, with 1,000,000 active minutes and 1 GB of data per month. This should be way more than enough for this project. Just make an account, make a project, set a username and password in `Access Control->Authorization`, and you can access the MQTT host in `Deployment Overview`. 
 
-#### the device has 4 modes: active, normal checks, slow checks, and off.
-- after connecting to a network and mqtt, it starts in normal mode and wakes up every 15 seconds to check for commands.
-- after reading a command, it will become active and stay awake for 1 minute. it can recieve messages instantly in this mode.
-- after 2 days of inactivity, the device enteres slow mode, and only checks every 30 seconds. (these values can be changed in the config)
-- after sending the command `off`, the device will go into deep sleep until woken up with the button.
+# (Optional) MQTT Bridge
+On some public wifi networks, the host `emqxsl.com` is blocked, and you will not be able to send any mqtt messages over the network. This is the case on my university's campus wifi. You can bypass this by hosting a web service that receives the commands and sends them to EMQX. To do this,  I recommend the service [Render.com](https://render.com/). 
+- Clone this github repository
+- Go to `Projects`
+- `Deploy A Web Service`
+- Select this repository
+- Set `Language` to `Node`
+- Set `Root Directory` as `\optional mqtt bridge`
+- Set `Build Command` to `npm install`
+- Set `Start Command` to `npm start`
 
-
-the led displays the device's status while it's trying to connect to the mqtt server (and can't send any messages). it will blink red while connecting to wifi, and blink blue while connecting to mqtt. after 5 retries of 5 seconds each, the device will go into deep sleep and the led will turn off. pushing the button will make it attempt to connect again.
-
-while connected, the button will trigger the other devices motor with the default strength. the motor is in a plastic case and will click when activated. the led will light up white when triggered. if the button is held for longer than 10 seconds the motor will automatically turn off and wait until the button is re-pressed.
-
-
-commands can be sent to the device through the `Iot MQTT Panel` app. you can also see the status of each device, and they will display messages about their mode, when they vibrate, and estimated battery life left. 
-
-# connecting to MQTT:
-- the dashboard settings require a name (anything)
-- an ID (anything)
-- a broker address: `lc600a99.ala.us-east-1.emqxsl.com`
-- a port: `8883`
-- network protocol: TCP-SSL
-- and in additional options, a username: `a`
-- and a password: `a`
+# Construction Notes
+- The LED can't use pins D9 (GPIO21) or D7 (GPIO20) because they can't be turned off while asleep, and will cause the LED to dimly glow. [info about the esp32 xiao c3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/)
+- There is tape on the LED to prevent the pins from touching. This isn't strictly necessary, and anything to stop the pins from touching will work. 
+- Esp32 battery wires should all be lead out of the back, away from the usb port. there should be 2 pairs of wires on the BAT-/BAT+ pads, 1 pair connected to the battery holder, and 1 pair of jumper cables to power the board. (If you solder another pair of 220k resistors on the pads, you don't need to attach the 220k resistors as shown in the picture [as described here](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/#check-the-battery-voltage).)
   
-after connecting, add 5 panels. the available topics are `esp32_1`, `esp32_2`, and `info`. add a text input and output for esp32_1 and esp32_2, and a text output for info. 
+<img width="1280" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/5e99803d-1edf-4d50-96f7-1c4f161531d0" />
 
 # Wiring Pictures
 ![Circuit Diagram](circuit.svg)
@@ -69,17 +102,8 @@ Unfortunately I made 2 mistakes in my soldering in these examples. You should re
 <img width="400" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/d7508b9b-2972-48a8-88b3-d4f05ac23411"/>
 
 
-
-# Construction Notes
-- The LED can't use pins D9 (GPIO21) or D7 (GPIO20) because they can't be turned off while asleep, and will cause the LED to dimly glow. [info about the esp32 xiao c3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/)
-- There is tape on the LED to prevent the pins from touching. This isn't strictly necessary, and anything to stop the pins from touching will work. 
-- Esp32 battery wires should all be lead out of the back, away from the usb port. there should be 2 pairs of wires on the BAT-/BAT+ pads, 1 pair connected to the battery holder, and 1 pair of jumper cables to power the board. (If you solder another pair of 220k resistors on the pads, you don't need to attach the 220k resistors as shown in the picture [as described here](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/#check-the-battery-voltage).)
-  
-<img width="1280" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/5e99803d-1edf-4d50-96f7-1c4f161531d0" />
-
 # To-do
 - check if off command works
-
 - print more useful debug info to the info topic, when waking and sleeping
 - what if wifi goes out at home? once connected, ping first before going to mqtt
 
