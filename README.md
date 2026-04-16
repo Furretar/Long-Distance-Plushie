@@ -102,14 +102,6 @@ Unfortunately I made 2 mistakes in my soldering in these examples. You should re
 <img width="400" height="720" alt="pin_map-2" src="https://github.com/user-attachments/assets/d7508b9b-2972-48a8-88b3-d4f05ac23411"/>
 
 
-# To-do
-- add finished housing picture
-- upload finished 3d model
-- edit code so it doesnt contain my netowrks and host etc
-- what if WiFi goes out at home? once connected, ping first before going to MQTT
-
-
-
 # Item list
 [seeed ESP32 xiao c3](https://www.amazon.com/dp/B0DGX3LSC7/?coliid=I2IC5EZRWAHNOI&colid=PV7PKK8FXEMM&psc=1&ref_=list_c_wl_lv_ov_lig_dp_it)
 
