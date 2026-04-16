@@ -29,12 +29,20 @@ While connected, the button will trigger the other device's motor at 20% strengt
 #### Battery
 The battery can be recharged by plugging in the device, and the voltage can be seen in the MQTT info topic. It's estimated the battery life would last 20 days with 1 hour of active time and 23 hours of normal checks a day. It's also estimated the battery is about to die at 3.3 volts.
 
+# MQTT Broker Setup
+If you don't want self host your MQTT broker, I recommend the service [EMQX](https://www.emqx.com/en/MQTT/public-MQTT5-broker). The free tier allows 1,000 devices to be connected, with 1,000,000 active minutes and 1 GB of data per month. This should be way more than enough for this project. Just make an account, make a project, set a username and password in `Access Control->Authorization` (set both to `a` so it works automatically with this code), and you can access the MQTT host in `Deployment Overview`. Just set the host url in the `LDP-ESP32-Code.ino` file near the top.
+
+Example: `const char* defaultMqttHost = "lc600a99.ala.us-east-1.emqxsl.com"`
+
+<img width="600" height="500" alt="image" src="https://github.com/user-attachments/assets/c93a36be-6c20-4a3b-9969-ccb87c831b21" />
+
+
 # Sending Commands:
 Commands can be sent to the device through the `Iot MQTT Panel` app. You can also see the status of each device, and they will display messages about their mode, when they vibrate, and current voltage. 
 
 - the dashboard settings require a name (anything)
 - an ID (anything)
-- a broker address: `lc600a99.ala.us-east-1.emqxsl.com`
+- a broker address (example): `lc600a99.ala.us-east-1.emqxsl.com`
 - a port: `8883`
 - network protocol: TCP-SSL
 - and in additional options, a username: `a`
@@ -70,9 +78,6 @@ open the IoT MQTT Panel app on iOS or android to send commands through MQTT, or 
 `var all` - prints the value of global variables, for debugging
 
 You may need to wait to send a command if the device is trying to connect to MQTT.
-
-# MQTT Broker Setup
-If you don't want self host your MQTT broker, I recommend the service [EMQX](https://www.emqx.com/en/MQTT/public-MQTT5-broker). The free tier allows 1,000 devices to be connected, with 1,000,000 active minutes and 1 GB of data per month. This should be way more than enough for this project. Just make an account, make a project, set a username and password in `Access Control->Authorization`, and you can access the MQTT host in `Deployment Overview`. 
 
 # Construction Notes
 - To build this project, you can reference the item list below and `LDP-Wiring.svg` file in this repository. There is also a 3D model file `LDP-housing-model.stl` that can be printed to house the project once constructed.
