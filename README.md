@@ -98,8 +98,6 @@ Unfortunately I made 2 mistakes in my soldering in these examples. You should re
 
 
 # To-do
-- check if off command works
-- update network logic in this readme
 - add finished housing picture
 - upload finished 3d model
 - edit code so it doesnt contain my netowrks and host etc
