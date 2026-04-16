@@ -14,20 +14,21 @@
 #define BLUE_PIN D3
 
 // change for each esp32
-const int thisNum = 2;
+const int thisNum = 1;
 
+// change for other setups
+const char* defaultMqttHost = "";
+const int defaultMqttPort = 8883;
+const char* defaultMqttUser = "a";
+const char* defaultMqttPass = "a";
+const char* defaultInfoTopic = "info";
+
+// topics
 const int targetNum = thisNum == 1 ? 2 : 1;
 String thisTopic = String("esp32_") + String(thisNum);
 String targetTopic = String("esp32_") + String(targetNum);
 String thisPing = String("ping_") + String(thisNum);
 String targetPing = String("ping_") + String(targetNum);
-
-// change for other setups
-const char* defaultMqttHost = "h862f16c.ala.us-east-1.emqxsl.com";
-const int defaultMqttPort = 8883;
-const char* defaultMqttUser = "a";
-const char* defaultMqttPass = "a";
-const char* defaultInfoTopic = "info";
 
 // default config values
 const int defaultCheckMqttTime = 100;               // ms, default 200, time awake to read retained mqtt messages
@@ -238,6 +239,7 @@ void setup_config() {
   load_config_vars();
 }
 
+// print the config in serial terminal and send it to mqtt if possible
 void print_config_serial_mqtt() {
   Serial.println("networks.json:");
   serializeJsonPretty(doc, Serial);
@@ -250,7 +252,6 @@ void print_config_serial_mqtt() {
     send_mqtt(String(infoTopic), configMessage);
   }
 }
-
 
 // set global variables with config
 void load_config_vars() {
@@ -295,7 +296,7 @@ void delete_config() {
   print_config_serial_mqtt();
 }
 
-
+// add a wifi network to the config
 void add_network(const char* ssid, const char* password) {
   JsonArray networks = doc["networks"].as<JsonArray>();
   if (!networks) {
@@ -313,6 +314,7 @@ void add_network(const char* ssid, const char* password) {
   print_config_serial_mqtt();
 }
 
+// remove a wifi network from the config
 void delete_network(const char* ssid) {
   JsonArray networks = doc["networks"].as<JsonArray>();
   if (!networks) return;
@@ -331,7 +333,7 @@ void delete_network(const char* ssid) {
   print_config_serial_mqtt();
 }
 
-
+// set a value in the config for ints
 void set_config_value_int(const char* key, int new_value) {
   if (!LittleFS.begin()) {
     Serial.println("LittleFS mount failed");
@@ -368,6 +370,7 @@ void set_config_value_int(const char* key, int new_value) {
   Serial.println(new_value);
 }
 
+// set a value in the config for strings
 void set_config_value_string(const char* key, const char* value) {
   if (!LittleFS.begin()) {
     Serial.println("LittleFS mount failed");
@@ -415,28 +418,28 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   handle_command(message);
 }
 
-// scans networks, for debugging
-void scan_print_networks() {
-  Serial.println("scanning available wifi networks...");
-  int networksCount = WiFi.scanNetworks();
+// // scans networks, for debugging
+// void scan_print_networks() {
+//   Serial.println("scanning available wifi networks...");
+//   int networksCount = WiFi.scanNetworks();
 
-  while (networksCount == 0) {
-    Serial.println("No networks found");
-    networksCount = WiFi.scanNetworks();
-  }
+//   while (networksCount == 0) {
+//     Serial.println("No networks found");
+//     networksCount = WiFi.scanNetworks();
+//   }
 
-  Serial.println(String(networksCount) + " networks found");
-  for (int i = 0; i < networksCount; ++i) {
-    String ssid = WiFi.SSID(i);
-    Serial.print(i + 1);
-    Serial.print(": ");
-    Serial.println(ssid);
-  }
-}
+//   Serial.println(String(networksCount) + " networks found");
+//   for (int i = 0; i < networksCount; ++i) {
+//     String ssid = WiFi.SSID(i);
+//     Serial.print(i + 1);
+//     Serial.print(": ");
+//     Serial.println(ssid);
+//   }
+// }
 
+// process and run commands
 void handle_command(String message) {
   message.trim();
-
 
   if (message.equals("")) {
     return;
@@ -456,12 +459,11 @@ void handle_command(String message) {
     Serial.println("received msg: " + message);
   }
 
+  // run
   if (message.startsWith("run") && !runMotor) {
     int val = message.length() > 4 ? message.substring(4).toInt() : strength;
     if (val >= 0 && val <= 100) strength = val;
-
     int motorStrength = (val * maxPwm) / 100;
-
     runMotor = true;
     motorStart = millis();
     set_led(255, 255, 255);
@@ -469,6 +471,7 @@ void handle_command(String message) {
     Serial.println("Motor ON (strength: " + String(val) + "%)");
   }
 
+  // run
   else if (message.equals("stop")) {
     runMotor = false;
     motorStart = 0;
@@ -476,6 +479,7 @@ void handle_command(String message) {
     Serial.println("stopping");
   }
 
+  // config
   else if (message.startsWith("config")) {
     String params = message.substring(7);
     params.trim();
@@ -527,6 +531,7 @@ void handle_command(String message) {
     print_config_serial_mqtt();
   }
 
+  // add network
   else if (message.startsWith("add network")) {
     String params = message.substring(12);
     int spaceIndex = params.indexOf(' ');
@@ -535,44 +540,53 @@ void handle_command(String message) {
     add_network(ssid.c_str(), password.c_str());
   }
 
+  // delete network
   else if (message.startsWith("delete network")) {
     String ssid = message.substring(15);
     delete_network(ssid.c_str());
   }
 
+  // delete config
   else if (message.equals("delete config")) {
     delete_config();
   }
 
+  // print config
   else if (message.startsWith("print config")) {
     print_config_serial_mqtt();
   }
 
+  // print voltage
   else if (message.startsWith("print voltage")) {
     read_and_print_voltage();
   }
 
+  // off
   else if (message.equals("off")) {
     // clear retained message or it'll reread and sleep forever
     mqtt.publish(thisTopic.c_str(), "", true);
     goToSleep(0);
   }
 
+  // sleep
   else if (message.startsWith("sleep")) {
     // clear retained message or it'll reread and sleep forever
     mqtt.publish(thisTopic.c_str(), "", true);
     goToSleep(normalCheck);
   }
 
+  // ping
   else if (message.equals("ping")) {
     mqtt.publish(targetPing.c_str(), "pong");
   }
 
+  // pong
   else if (message.equals("pong")) {
     lastPongReceived = millis();
     otherAwake = true;
   }
 
+  // var all
   else if (message == "var all") {
     String msg = "----- VARIABLES -----\n";
 
@@ -621,19 +635,18 @@ void handle_command(String message) {
     }
   }
 
+  // else invalid
   else {
     Serial.println("Invalid command: " + message);
   }
 
   if (!isPingPong) {
     clearCommand = true;
-    ;
   }
 }
 
-
+// wifi connection logic
 String connect_wifi() {
-
   // turn led on if device is active
   if (stayAwake) {
     set_led(255, 0, 0);
@@ -657,7 +670,6 @@ String connect_wifi() {
     // try to connect to last connected network first
     if (strlen(default_ssid) > 0) {
       for (int attempt = 0; attempt < lastNetworkTries; attempt++) {
-        // ensure clean stack
         Serial.println("Connecting to last network, attempt " + String(attempt + 1) + " of " + String(lastNetworkTries) + ": " + String(default_ssid));
 
         WiFi.begin(default_ssid, default_password);
@@ -976,7 +988,7 @@ void loop() {
     if (otherAwake) {
       set_led(255, 0, 255);
     } else {
-      set_led(0, 0, 255);
+      set_led(0, 255, 255);
     }
 
     time(&timeLastActive);
