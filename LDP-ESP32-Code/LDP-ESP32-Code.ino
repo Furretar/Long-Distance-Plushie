@@ -18,6 +18,9 @@ const int thisNum = 1;
 
 // change for other setups
 const char* defaultMqttHost = "";
+const char* userNetwork = "";
+const char* userPassword = "";
+
 const int defaultMqttPort = 8883;
 const char* defaultMqttUser = "a";
 const char* defaultMqttPass = "a";
@@ -196,8 +199,8 @@ void setup_config() {
     // initialize keys
     JsonArray networks = doc.createNestedArray("networks");
     JsonObject defaultNetwork = networks.createNestedObject();
-    defaultNetwork["ssid"] = "ncsu";
-    defaultNetwork["password"] = "";
+    defaultNetwork["ssid"] = userNetwork;
+    defaultNetwork["password"] = userPassword;
     doc["checkMqttTime"] = defaultCheckMqttTime;
     doc["stayAwakeAfterCommand"] = defaultStayAwakeAfterCommand;
     doc["motorTimeout"] = defaultMotorTimeout;
